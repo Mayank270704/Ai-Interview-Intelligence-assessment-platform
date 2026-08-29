@@ -1,0 +1,1 @@
+export default function VideoInterviewPage() { return <main><h1>Video interview</h1></main>; }

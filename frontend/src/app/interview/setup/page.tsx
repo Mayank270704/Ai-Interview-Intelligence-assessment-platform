@@ -1,0 +1,1 @@
+export default function InterviewSetupPage() { return <main><h1>Interview setup</h1></main>; }

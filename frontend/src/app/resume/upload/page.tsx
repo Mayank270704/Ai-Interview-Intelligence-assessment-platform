@@ -1,0 +1,1 @@
+export default function ResumeUploadPage() { return <main><h1>Upload resume</h1></main>; }

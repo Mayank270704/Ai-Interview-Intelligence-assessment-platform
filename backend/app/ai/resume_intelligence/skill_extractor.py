@@ -1,0 +1,1 @@
+"""Resume skill extraction boundary."""

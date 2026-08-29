@@ -1,0 +1,10 @@
+:root {
+  color-scheme: light;
+  font-family: Arial, sans-serif;
+  background: #f7f8fa;
+  color: #17202a;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 960px; margin: 0 auto; padding: 6rem 1.5rem; }

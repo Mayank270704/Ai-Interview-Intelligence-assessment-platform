@@ -1,0 +1,1 @@
+export function useInterview() { return { status: "idle" as const }; }

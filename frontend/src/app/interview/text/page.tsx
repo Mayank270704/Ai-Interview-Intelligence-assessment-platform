@@ -1,0 +1,1 @@
+export default function TextInterviewPage() { return <main><h1>Text interview</h1></main>; }

@@ -1,0 +1,1 @@
+"""Difficulty controller boundary."""

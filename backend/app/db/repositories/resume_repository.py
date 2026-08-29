@@ -1,0 +1,1 @@
+"""Resume persistence operations."""

@@ -1,0 +1,1 @@
+export default function VoiceInterviewPage() { return <main><h1>Voice interview</h1></main>; }

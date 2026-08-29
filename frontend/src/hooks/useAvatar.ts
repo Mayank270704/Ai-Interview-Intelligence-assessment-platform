@@ -1,0 +1,1 @@
+export function useAvatar() { return { status: "idle" as const }; }

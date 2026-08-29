@@ -1,0 +1,1 @@
+"""World knowledge retrieval boundary."""
