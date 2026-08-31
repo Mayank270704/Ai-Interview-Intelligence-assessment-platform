@@ -24,6 +24,31 @@ def test_config_loads_defaults():
         assert config_module.GEMINI_MODEL is not None
 
 
+def test_config_import_does_not_require_gemini_key():
+    """Database tooling can import config without unrelated LLM secrets."""
+    with patch.dict("os.environ", {"LLM_PROVIDER": "gemini"}, clear=True):
+        import importlib
+        import app.core.config as config_module
+
+        importlib.reload(config_module)
+        config_module.GEMINI_API_KEY = None
+
+        assert config_module.GEMINI_API_KEY is None
+
+
+def test_llm_validation_still_requires_gemini_key():
+    """Application LLM usage should still validate provider configuration."""
+    with patch.dict("os.environ", {"LLM_PROVIDER": "gemini"}, clear=True):
+        import importlib
+        import app.core.config as config_module
+
+        importlib.reload(config_module)
+        config_module.GEMINI_API_KEY = None
+
+        with pytest.raises(ValueError, match="GEMINI_API_KEY"):
+            config_module.validate_llm_config()
+
+
 def test_config_loads_custom_provider():
     """Test that config loads custom provider from env."""
     with patch.dict(

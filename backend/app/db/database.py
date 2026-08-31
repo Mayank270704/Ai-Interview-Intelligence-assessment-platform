@@ -21,7 +21,7 @@ def get_engine() -> Engine:
     if _engine is None:
         if not DATABASE_URL:
             raise ValueError("DATABASE_URL is not configured")
-        _engine = create_engine(DATABASE_URL)
+        _engine = create_engine(DATABASE_URL, pool_pre_ping=True)
     return _engine
 
 
@@ -45,3 +45,9 @@ def session_scope() -> Iterator[Session]:
         raise
     finally:
         session.close()
+
+
+def get_session() -> Iterator[Session]:
+    """FastAPI dependency that wraps one request in a database transaction."""
+    with session_scope() as session:
+        yield session

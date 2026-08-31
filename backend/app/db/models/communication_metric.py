@@ -1,1 +1,0 @@
-"""Communication metric model."""

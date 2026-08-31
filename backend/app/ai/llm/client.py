@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from app.ai.llm.gemini_provider import GeminiProvider
 from app.ai.llm.provider import LLMProvider
-from app.core.config import GEMINI_API_KEY, GEMINI_MODEL, LLM_PROVIDER
+from app.core.config import GEMINI_API_KEY, GEMINI_MODEL, LLM_PROVIDER, validate_llm_config
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -21,6 +21,7 @@ def _load_provider() -> LLMProvider:
     Raises:
         ValueError: If provider is not configured or configuration is invalid
     """
+    validate_llm_config()
     if LLM_PROVIDER == "gemini":
         if not GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY is not configured")

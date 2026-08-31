@@ -14,9 +14,10 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 # Database Configuration
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Validation
-if LLM_PROVIDER == "gemini" and not GEMINI_API_KEY:
-    raise ValueError(
-        "LLM_PROVIDER is set to 'gemini' but GEMINI_API_KEY is not configured. "
-        "Please set the GEMINI_API_KEY environment variable."
-    )
+def validate_llm_config() -> None:
+    """Validate LLM settings at the LLM boundary."""
+    if LLM_PROVIDER == "gemini" and not GEMINI_API_KEY:
+        raise ValueError(
+            "LLM_PROVIDER is set to 'gemini' but GEMINI_API_KEY is not configured. "
+            "Please set the GEMINI_API_KEY environment variable."
+        )

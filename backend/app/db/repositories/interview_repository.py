@@ -37,6 +37,20 @@ def get_interview(session: Session, interview_id: str) -> Interview | None:
     return session.get(Interview, interview_id)
 
 
+def update_interview_difficulty(
+    session: Session,
+    interview_id: str,
+    difficulty: str,
+) -> Interview:
+    """Persist the interview's current adaptive difficulty."""
+    interview = session.get(Interview, interview_id)
+    if interview is None:
+        raise ValueError(f"Interview {interview_id} was not found.")
+    interview.difficulty = difficulty
+    session.flush()
+    return interview
+
+
 def get_turns(session: Session, interview_id: str) -> list[InterviewTurn]:
     """Load an interview's turns in the order they were asked."""
     statement = (

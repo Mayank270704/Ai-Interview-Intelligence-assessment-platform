@@ -15,6 +15,7 @@ from app.db.repositories import (
     interview_repository,
     resume_repository,
 )
+from app.db import database
 from app.schemas.answer import AnswerAnalysis, ResumeClaimRelationship
 from app.schemas.interview_decision import InterviewDecision
 from app.schemas.question import GeneratedQuestion
@@ -321,3 +322,122 @@ def test_duplicate_turn_number_fails_and_the_transaction_rolls_back(session):
     assert session.query(Candidate).count() == 1
     assert session.query(Resume).count() == 1
     assert session.query(Interview).count() == 1
+
+
+def test_database_session_dependency_creates_transactional_sessions(monkeypatch):
+    """The runtime database dependency should commit on success and close the session."""
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(database, "_engine", engine)
+    monkeypatch.setattr(
+        database,
+        "_session_factory",
+        sessionmaker(bind=engine, expire_on_commit=False),
+    )
+
+    dependency = database.get_session()
+    db_session = next(dependency)
+    candidate = candidate_repository.create_candidate(db_session, full_name="Jane Doe")
+
+    with pytest.raises(StopIteration):
+        next(dependency)
+
+    verifier = database.get_session_factory()()
+    try:
+        assert verifier.get(Candidate, candidate.id).full_name == "Jane Doe"
+    finally:
+        verifier.close()
+        engine.dispose()
+
+
+def test_database_session_dependency_rolls_back_failures(monkeypatch):
+    """Failed runtime database operations should not leave partial rows committed."""
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(database, "_engine", engine)
+    monkeypatch.setattr(
+        database,
+        "_session_factory",
+        sessionmaker(bind=engine, expire_on_commit=False),
+    )
+
+    dependency = database.get_session()
+    db_session = next(dependency)
+    candidate_repository.create_candidate(db_session, full_name="Jane Doe")
+
+    with pytest.raises(RuntimeError):
+        dependency.throw(RuntimeError("request failed"))
+
+    verifier = database.get_session_factory()()
+    try:
+        assert verifier.query(Candidate).count() == 0
+    finally:
+        verifier.close()
+        engine.dispose()
+
+
+def test_interview_difficulty_updates_are_persisted(session):
+    """Adaptive difficulty changes should be stored on the interview row."""
+    _, _, interview, profile = _persisted_interview(session)
+    service = _service(session, interview, profile)
+    service.brain.reasoning_engine.decide_next_action.return_value = InterviewDecision(
+        action="DEEPEN",
+        target_concept="advanced_tokenization",
+        reasoning="Candidate gave enough evidence to increase depth.",
+        reasoning_evidence=["Detailed answer"],
+        difficulty_direction="increase",
+        confidence="medium",
+    )
+
+    service.start_interview()
+    service.submit_answer("I fine-tuned BERT with a careful validation setup.")
+    session.commit()
+
+    session.expire_all()
+    stored = interview_repository.get_interview(session, interview.id)
+    assert stored.difficulty == "hard"
+
+    restored = InterviewTurnService.load(session, interview.id)
+    assert restored.difficulty == "hard"
+
+
+def test_supabase_compatible_postgresql_crud(monkeypatch):
+    """Optional PostgreSQL smoke test for Supabase-compatible behavior."""
+    url = __import__("os").getenv("TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("TEST_DATABASE_URL is not configured")
+    if not url.startswith("postgresql"):
+        pytest.skip("TEST_DATABASE_URL is not a PostgreSQL URL")
+
+    engine = create_engine(url, pool_pre_ping=True)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    db_session = factory()
+    try:
+        candidate = candidate_repository.create_candidate(
+            db_session,
+            full_name="PostgreSQL Smoke Test",
+        )
+        resume = resume_repository.create_resume(db_session, candidate.id, _profile())
+        interview = interview_repository.create_interview(
+            db_session,
+            candidate_id=candidate.id,
+            objective="Machine Learning",
+            difficulty="medium",
+            resume_id=resume.id,
+        )
+        interview_repository.add_question_turn(db_session, interview.id, _question())
+
+        assert interview_repository.get_interview(db_session, interview.id) is not None
+        assert len(interview_repository.get_turns(db_session, interview.id)) == 1
+    finally:
+        db_session.rollback()
+        db_session.close()
+        engine.dispose()

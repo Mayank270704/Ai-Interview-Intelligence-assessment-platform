@@ -220,6 +220,7 @@ class InterviewTurnService:
             pending_claim_ids = turn.pending_claim_ids
 
         service._restore_pending_claims(pending_claim_ids)
+        service.difficulty = interview.difficulty
         return service
 
     def _persist_question(self, question: GeneratedQuestion) -> None:
@@ -249,6 +250,11 @@ class InterviewTurnService:
             decision=decision,
             knowledge_state=self.knowledge_state,
             pending_claim_ids=self._pending_claim_ids(),
+        )
+        interview_repository.update_interview_difficulty(
+            self.session,
+            self.interview_id,
+            self.difficulty,
         )
 
     def _pending_claim_ids(self) -> list[str]:
