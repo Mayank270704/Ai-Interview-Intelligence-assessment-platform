@@ -13,9 +13,11 @@ from app.db.repositories import (
 )
 from app.schemas.interview import (
     InterviewAnswerRequest,
+    InterviewAnswerResponse,
     InterviewQuestionResponse,
     InterviewStartRequest,
     InterviewStateResponse,
+    AnsweredTurnResponse,
 )
 from app.services.interview.turn_service import InterviewTurnService
 
@@ -35,6 +37,11 @@ def start_interview(
         resume = resume_repository.get_resume(session, resume_id)
         if resume is None:
             raise HTTPException(status_code=404, detail="Resume not found")
+        if candidate_id is not None and candidate_id != resume.candidate_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Resume does not belong to the supplied candidate",
+            )
         candidate_id = resume.candidate_id
         profile = resume_repository.load_candidate_profile(session, resume_id)
     elif profile:
@@ -78,29 +85,70 @@ def start_interview(
         candidate_id=candidate_id,
         resume_id=resume_id,
         difficulty=service.difficulty,
+        turn_id=service._current_turn.id,
         question=question,
     )
 
 
-@router.post("/{interview_id}/answers", response_model=InterviewQuestionResponse)
+@router.post("/{interview_id}/answers", response_model=InterviewAnswerResponse)
 def submit_answer(
     interview_id: str,
     request: InterviewAnswerRequest,
     session: Session = Depends(get_session),
-) -> InterviewQuestionResponse:
+) -> InterviewAnswerResponse:
     interview = interview_repository.get_interview(session, interview_id)
     if interview is None:
         raise HTTPException(status_code=404, detail="Interview not found")
 
     service = InterviewTurnService.load(session, interview_id)
-    question = service.submit_answer(request.answer)
+    current_turn = service._current_turn
+    if current_turn is None:
+        raise HTTPException(status_code=409, detail="Interview has no pending turn")
+    if request.turn_id != current_turn.id:
+        requested_turn = interview_repository.get_turn(session, request.turn_id)
+        if requested_turn is None:
+            raise HTTPException(status_code=404, detail="Interview turn not found")
+        if requested_turn.interview_id != interview_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Interview turn does not belong to this interview",
+            )
+        if requested_turn.answer is not None:
+            raise HTTPException(status_code=409, detail="Interview turn already answered")
+        raise HTTPException(status_code=409, detail="Interview turn is not current")
 
-    return InterviewQuestionResponse(
+    if current_turn.answer is not None:
+        raise HTTPException(status_code=409, detail="Interview turn already answered")
+
+    try:
+        question = service.submit_answer(request.answer)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    if (
+        service.last_answered_turn is None
+        or service.last_answer_analysis is None
+        or service.last_evaluation is None
+        or service.last_decision is None
+        or service._current_turn is None
+    ):
+        raise HTTPException(status_code=500, detail="Interview turn was not persisted")
+
+    return InterviewAnswerResponse(
         interview_id=interview.id,
-        candidate_id=interview.candidate_id,
-        resume_id=interview.resume_id,
+        answered_turn=AnsweredTurnResponse(
+            turn_id=service.last_answered_turn.id,
+            turn_number=service.last_answered_turn.turn_number,
+            question=service.last_answered_turn.question,
+            answer=service.last_answered_turn.answer,
+        ),
+        answer_analysis=service.last_answer_analysis,
+        evaluation=service.last_evaluation,
+        interviewer_decision=service.last_decision,
+        next_turn_id=service._current_turn.id,
+        next_question=question,
         difficulty=service.difficulty,
-        question=question,
+        knowledge_state=service.knowledge_state,
     )
 
 

@@ -37,6 +37,11 @@ def get_interview(session: Session, interview_id: str) -> Interview | None:
     return session.get(Interview, interview_id)
 
 
+def get_turn(session: Session, turn_id: str) -> InterviewTurn | None:
+    """Load one interview turn by id."""
+    return session.get(InterviewTurn, turn_id)
+
+
 def update_interview_difficulty(
     session: Session,
     interview_id: str,

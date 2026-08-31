@@ -63,6 +63,10 @@ class InterviewTurnService:
         self.knowledge_state = CandidateKnowledgeState()
         self.current_question: GeneratedQuestion | None = None
         self._current_turn: InterviewTurn | None = None
+        self.last_answer_analysis: AnswerAnalysis | None = None
+        self.last_evaluation: AnswerEvaluation | None = None
+        self.last_decision: InterviewDecision | None = None
+        self.last_answered_turn: InterviewTurn | None = None
 
         self._sync_pending_claims()
 
@@ -109,6 +113,10 @@ class InterviewTurnService:
         if self.current_question is None:
             raise ValueError(
                 f"Interview {self.interview_id} has no pending question to answer."
+            )
+        if self._current_turn is not None and self._current_turn.answer is not None:
+            raise ValueError(
+                f"Interview turn {self._current_turn.id} has already been answered."
             )
 
         asked_question = self.current_question
@@ -162,6 +170,9 @@ class InterviewTurnService:
 
         self._persist_answer(answer, analysis, evaluation, decision)
 
+        self.last_answer_analysis = analysis
+        self.last_evaluation = evaluation
+        self.last_decision = decision
         self.current_question = question
         self._persist_question(question)
         return question
@@ -241,7 +252,7 @@ class InterviewTurnService:
         """Record the answer and everything derived from it against the asked turn."""
         if self.session is None or self._current_turn is None:
             return
-        interview_repository.record_answer(
+        self.last_answered_turn = interview_repository.record_answer(
             self.session,
             turn=self._current_turn,
             answer=answer,
