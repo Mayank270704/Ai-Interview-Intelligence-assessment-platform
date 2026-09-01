@@ -3,9 +3,11 @@
 from collections.abc import Iterator
 from unittest.mock import MagicMock
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -16,6 +18,7 @@ from app.ai.question_engine.generator import QuestionGenerator
 from app.db.base import Base
 from app.db.database import get_session
 from app.db.models import Candidate, Interview, InterviewTurn, Resume
+from app.db.repositories import candidate_repository
 from app.main import app
 from app.schemas.answer import AnswerAnalysis, ResumeClaimRelationship
 from app.schemas.interview_decision import InterviewDecision
@@ -81,6 +84,9 @@ def mocked_ai(monkeypatch):
     }
 
 
+CLAIM_TEXT = "Improved model accuracy by 18%"
+
+
 def _profile() -> CandidateProfile:
     return CandidateProfile(
         identity=CandidateIdentity(full_name="Jane Doe", email="jane@example.com"),
@@ -88,10 +94,10 @@ def _profile() -> CandidateProfile:
         skills=[Skill(name="Machine Learning")],
         claims=[
             Claim(
-                claim_text="Improved model accuracy by 18%",
+                claim_text=CLAIM_TEXT,
                 category="quantitative",
                 context="Sentiment analysis project",
-                resume_evidence="Improved model accuracy by 18%.",
+                resume_evidence=f"{CLAIM_TEXT}.",
             )
         ],
     )
@@ -111,7 +117,7 @@ def _question(
     )
 
 
-def _analysis() -> AnswerAnalysis:
+def _analysis(claim_text: str | None = CLAIM_TEXT) -> AnswerAnalysis:
     return AnswerAnalysis(
         technical_correctness="partially_correct",
         demonstrated_concepts=["fine_tuning"],
@@ -122,25 +128,35 @@ def _analysis() -> AnswerAnalysis:
         technical_depth="moderate",
         completeness="partial",
         unsupported_claims=[],
-        resume_claim_relationships=[
-            ResumeClaimRelationship(
-                claim_text="Improved model accuracy by 18%",
-                relationship="supports",
-                evidence="Candidate described the validation lift.",
-            )
-        ],
+        resume_claim_relationships=(
+            [
+                ResumeClaimRelationship(
+                    claim_text=claim_text,
+                    relationship="supports",
+                    evidence="Candidate described the validation lift.",
+                )
+            ]
+            if claim_text
+            else []
+        ),
         recommended_actions=["probe_deeper"],
         evidence=["Candidate described fine-tuning."],
     )
 
 
-def _decision() -> InterviewDecision:
+def _decision(
+    action: str = "DEEPEN",
+    target_concept: str = "tokenization",
+    difficulty_direction: str = "maintain",
+    resume_claim_to_investigate: str | None = None,
+) -> InterviewDecision:
     return InterviewDecision(
-        action="DEEPEN",
-        target_concept="tokenization",
+        action=action,
+        target_concept=target_concept,
         reasoning="Tokenization needs more evidence.",
         reasoning_evidence=["No tokenizer named."],
-        difficulty_direction="maintain",
+        difficulty_direction=difficulty_direction,
+        resume_claim_to_investigate=resume_claim_to_investigate,
         confidence="medium",
     )
 
@@ -155,12 +171,15 @@ def _create_candidate(client: TestClient) -> str:
 
 
 def _create_resume(client: TestClient, candidate_id: str) -> str:
+    return _create_resume_response(client, candidate_id).json()["resume_id"]
+
+
+def _create_resume_response(client: TestClient, candidate_id: str) -> httpx.Response:
     response = client.post(
         "/api/v1/resumes",
         json={"candidate_id": candidate_id, "profile": _profile().model_dump(mode="json")},
     )
-    assert response.status_code == 200
-    return response.json()["resume_id"]
+    return response
 
 
 def _start_interview(client: TestClient, resume_id: str) -> dict:
@@ -369,8 +388,204 @@ def test_failed_answer_submission_does_not_corrupt_turn_state(
         json={"turn_id": started["turn_id"], "answer": "Answer."},
     )
 
-    assert response.status_code == 409
+    assert response.status_code == 502
     turns = api_session.query(InterviewTurn).all()
     assert len(turns) == 1
     assert turns[0].id == started["turn_id"]
     assert turns[0].answer is None
+
+
+def test_knowledge_state_accumulates_evidence_across_turns(
+    client: TestClient,
+    mocked_ai,
+):
+    candidate_id = _create_candidate(client)
+    resume_id = _create_resume(client, candidate_id)
+    started = _start_interview(client, resume_id)
+
+    first = client.post(
+        f"/api/v1/interviews/{started['interview_id']}/answers",
+        json={"turn_id": started["turn_id"], "answer": "I fine-tuned BERT."},
+    ).json()
+    second = client.post(
+        f"/api/v1/interviews/{started['interview_id']}/answers",
+        json={"turn_id": first["next_turn_id"], "answer": "I used WordPiece."},
+    ).json()
+
+    first_concepts = {
+        entry["concept"]: entry for entry in first["knowledge_state"]["concept_states"]
+    }
+    second_concepts = {
+        entry["concept"]: entry for entry in second["knowledge_state"]["concept_states"]
+    }
+    assert set(second_concepts) == {"fine_tuning", "tokenization"}
+    assert first_concepts["fine_tuning"]["confidence"] == "high"
+    assert second_concepts["fine_tuning"]["demonstrated"] is True
+    assert second["knowledge_state"]["claim_verifications"][0]["confidence"] == "high"
+
+
+def test_pending_claims_are_synchronised_and_persisted(
+    client: TestClient,
+    mocked_ai,
+):
+    candidate_id = _create_candidate(client)
+    resume_response = _create_resume_response(client, candidate_id)
+    resume_id = resume_response.json()["resume_id"]
+    claim_id = resume_response.json()["claim_ids"][0]
+    started = _start_interview(client, resume_id)
+    mocked_ai["analyze_answer"].side_effect = [_analysis(None), _analysis()]
+
+    first = client.post(
+        f"/api/v1/interviews/{started['interview_id']}/answers",
+        json={"turn_id": started["turn_id"], "answer": "I mostly wrote glue code."},
+    ).json()
+    assert first["knowledge_state"]["claim_verifications"] == []
+
+    second = client.post(
+        f"/api/v1/interviews/{started['interview_id']}/answers",
+        json={"turn_id": first["next_turn_id"], "answer": "We measured an 18% lift."},
+    ).json()
+    assert second["knowledge_state"]["claim_verifications"][0]["claim_id"] == claim_id
+
+    turns = client.get(f"/api/v1/interviews/{started['interview_id']}").json()["turns"]
+    assert turns[0]["pending_claim_ids"] == [claim_id]
+    assert turns[1]["pending_claim_ids"] == []
+
+
+def test_claim_investigation_decision_carries_the_stable_claim_id(
+    client: TestClient,
+    mocked_ai,
+):
+    candidate_id = _create_candidate(client)
+    resume_response = _create_resume_response(client, candidate_id)
+    claim_id = resume_response.json()["claim_ids"][0]
+    started = _start_interview(client, resume_response.json()["resume_id"])
+    mocked_ai["analyze_answer"].return_value = _analysis(None)
+    mocked_ai["decide_next_action"].return_value = _decision(
+        action="INVESTIGATE_CLAIM",
+        target_concept="model accuracy",
+        resume_claim_to_investigate=CLAIM_TEXT,
+    )
+
+    body = client.post(
+        f"/api/v1/interviews/{started['interview_id']}/answers",
+        json={"turn_id": started["turn_id"], "answer": "I mostly wrote glue code."},
+    ).json()
+
+    assert body["interviewer_decision"]["resume_claim_to_investigate"] == CLAIM_TEXT
+    assert body["interviewer_decision"]["resume_claim_id"] == claim_id
+
+
+def test_next_question_receives_the_explored_concepts(client: TestClient, mocked_ai):
+    candidate_id = _create_candidate(client)
+    resume_id = _create_resume(client, candidate_id)
+    started = _start_interview(client, resume_id)
+    mocked_ai["decide_next_action"].return_value = _decision(
+        action="CHANGE_TOPIC", target_concept="deployment"
+    )
+
+    client.post(
+        f"/api/v1/interviews/{started['interview_id']}/answers",
+        json={"turn_id": started["turn_id"], "answer": "I fine-tuned BERT."},
+    )
+
+    kwargs = mocked_ai["generate_question"].call_args.kwargs
+    assert kwargs["explored_concepts"] == ["deployment"]
+    assert [turn["question"] for turn in kwargs["recent_turns"]] == [
+        "How did you build the sentiment model?"
+    ]
+
+
+def test_difficulty_progression_is_returned_and_persisted(client: TestClient, mocked_ai):
+    candidate_id = _create_candidate(client)
+    resume_id = _create_resume(client, candidate_id)
+    started = _start_interview(client, resume_id)
+    assert started["difficulty"] == "medium"
+    mocked_ai["decide_next_action"].return_value = _decision(
+        difficulty_direction="increase"
+    )
+
+    body = client.post(
+        f"/api/v1/interviews/{started['interview_id']}/answers",
+        json={"turn_id": started["turn_id"], "answer": "I fine-tuned BERT."},
+    ).json()
+
+    assert body["difficulty"] == "hard"
+    assert mocked_ai["generate_question"].call_args.kwargs["difficulty"] == "hard"
+    state = client.get(f"/api/v1/interviews/{started['interview_id']}").json()
+    assert state["difficulty"] == "hard"
+
+
+def test_resume_for_unknown_candidate_returns_404(client: TestClient):
+    response = _create_resume_response(client, "missing-candidate")
+
+    assert response.status_code == 404
+
+
+def test_interview_for_unknown_resume_returns_404(client: TestClient):
+    response = client.post(
+        "/api/v1/interviews",
+        json={"resume_id": "missing-resume", "objective": "Machine Learning"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_interview_for_unknown_candidate_returns_404(client: TestClient):
+    response = client.post(
+        "/api/v1/interviews",
+        json={
+            "candidate_id": "missing-candidate",
+            "objective": "Machine Learning",
+            "candidate_profile": _profile().model_dump(mode="json"),
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_interview_without_resume_or_profile_returns_400(client: TestClient):
+    response = client.post(
+        "/api/v1/interviews",
+        json={"objective": "Machine Learning"},
+    )
+
+    assert response.status_code == 400
+
+
+def test_interview_without_objective_is_rejected(client: TestClient, mocked_ai):
+    candidate_id = _create_candidate(client)
+    resume_id = _create_resume(client, candidate_id)
+
+    response = client.post(
+        "/api/v1/interviews",
+        json={"resume_id": resume_id, "objective": ""},
+    )
+
+    assert response.status_code == 422
+
+
+def test_first_question_generation_failure_returns_502(client: TestClient, mocked_ai):
+    candidate_id = _create_candidate(client)
+    resume_id = _create_resume(client, candidate_id)
+    mocked_ai["generate_question"].side_effect = ValueError(
+        "Failed to generate question"
+    )
+
+    response = client.post(
+        "/api/v1/interviews",
+        json={"resume_id": resume_id, "objective": "Machine Learning"},
+    )
+
+    assert response.status_code == 502
+
+
+def test_persistence_failure_returns_503(client: TestClient, monkeypatch):
+    def fail(*args, **kwargs):
+        raise SQLAlchemyError("connection lost")
+
+    monkeypatch.setattr(candidate_repository, "create_candidate", fail)
+
+    response = client.post("/api/v1/candidates", json={"full_name": "Jane Doe"})
+
+    assert response.status_code == 503

@@ -1,8 +1,8 @@
 """Interview API schemas."""
 
-from typing import Any
+from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.answer import AnswerAnalysis
 from app.schemas.evaluation import AnswerEvaluation
@@ -25,6 +25,14 @@ class ResumeCreateResponse(BaseModel):
     resume_id: str
     candidate_id: str
     claim_ids: list[str] = Field(default_factory=list)
+
+
+class ResumeUploadResponse(BaseModel):
+    """Stored resume identifiers and the profile extracted from an uploaded PDF."""
+
+    resume_id: str
+    candidate_id: str
+    profile: CandidateProfile
 
 
 class InterviewStartRequest(BaseModel):
@@ -78,6 +86,23 @@ class InterviewAnswerResponse(BaseModel):
     knowledge_state: CandidateKnowledgeState
 
 
+class InterviewTurnResponse(BaseModel):
+    """One persisted interview turn and everything the pipeline derived from it."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    turn_number: int
+    question: GeneratedQuestion
+    answer: str | None = None
+    answer_analysis: AnswerAnalysis | None = None
+    evaluation: AnswerEvaluation | None = None
+    decision: InterviewDecision | None = None
+    knowledge_state: CandidateKnowledgeState | None = None
+    pending_claim_ids: list[str] | None = None
+    created_at: datetime
+
+
 class InterviewStateResponse(BaseModel):
     """Stored interview state reconstructed from persistence."""
 
@@ -87,5 +112,5 @@ class InterviewStateResponse(BaseModel):
     objective: str
     difficulty: QuestionDifficulty
     current_question: GeneratedQuestion | None = None
-    knowledge_state: dict[str, Any]
-    turns: list[dict[str, Any]]
+    knowledge_state: CandidateKnowledgeState
+    turns: list[InterviewTurnResponse]

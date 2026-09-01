@@ -1,4 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.v1.candidates import router as candidates_router
 from app.api.v1.health import router as health_router
@@ -12,3 +14,7 @@ app.include_router(candidates_router, prefix="/api/v1")
 app.include_router(resumes_router, prefix="/api/v1")
 app.include_router(interviews_router, prefix="/api/v1")
 
+
+@app.exception_handler(SQLAlchemyError)
+def handle_database_error(request: Request, exc: SQLAlchemyError) -> JSONResponse:
+    return JSONResponse(status_code=503, content={"detail": "Database is unavailable"})

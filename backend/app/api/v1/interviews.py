@@ -1,10 +1,9 @@
 """Interview API routes."""
 
-from typing import Any
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.exceptions import InterviewPipelineError
 from app.db.database import get_session
 from app.db.repositories import (
     candidate_repository,
@@ -17,6 +16,7 @@ from app.schemas.interview import (
     InterviewQuestionResponse,
     InterviewStartRequest,
     InterviewStateResponse,
+    InterviewTurnResponse,
     AnsweredTurnResponse,
 )
 from app.services.interview.turn_service import InterviewTurnService
@@ -78,14 +78,21 @@ def start_interview(
         difficulty=interview.difficulty,
         session=session,
     )
-    question = service.start_interview()
+    try:
+        question = service.start_interview()
+    except InterviewPipelineError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    turn_id = service.current_turn_id
+    if turn_id is None:
+        raise HTTPException(status_code=500, detail="Interview turn was not persisted")
 
     return InterviewQuestionResponse(
         interview_id=interview.id,
         candidate_id=candidate_id,
         resume_id=resume_id,
         difficulty=service.difficulty,
-        turn_id=service._current_turn.id,
+        turn_id=turn_id,
         question=question,
     )
 
@@ -101,10 +108,10 @@ def submit_answer(
         raise HTTPException(status_code=404, detail="Interview not found")
 
     service = InterviewTurnService.load(session, interview_id)
-    current_turn = service._current_turn
-    if current_turn is None:
+    current_turn_id = service.current_turn_id
+    if current_turn_id is None:
         raise HTTPException(status_code=409, detail="Interview has no pending turn")
-    if request.turn_id != current_turn.id:
+    if request.turn_id != current_turn_id:
         requested_turn = interview_repository.get_turn(session, request.turn_id)
         if requested_turn is None:
             raise HTTPException(status_code=404, detail="Interview turn not found")
@@ -117,20 +124,20 @@ def submit_answer(
             raise HTTPException(status_code=409, detail="Interview turn already answered")
         raise HTTPException(status_code=409, detail="Interview turn is not current")
 
-    if current_turn.answer is not None:
-        raise HTTPException(status_code=409, detail="Interview turn already answered")
-
     try:
         question = service.submit_answer(request.answer)
+    except InterviewPipelineError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    next_turn_id = service.current_turn_id
     if (
         service.last_answered_turn is None
         or service.last_answer_analysis is None
         or service.last_evaluation is None
         or service.last_decision is None
-        or service._current_turn is None
+        or next_turn_id is None
     ):
         raise HTTPException(status_code=500, detail="Interview turn was not persisted")
 
@@ -145,7 +152,7 @@ def submit_answer(
         answer_analysis=service.last_answer_analysis,
         evaluation=service.last_evaluation,
         interviewer_decision=service.last_decision,
-        next_turn_id=service._current_turn.id,
+        next_turn_id=next_turn_id,
         next_question=question,
         difficulty=service.difficulty,
         knowledge_state=service.knowledge_state,
@@ -170,21 +177,6 @@ def get_interview(
         objective=interview.objective,
         difficulty=service.difficulty,
         current_question=service.current_question,
-        knowledge_state=service.knowledge_state.model_dump(mode="json"),
-        turns=[_turn_to_dict(turn) for turn in turns],
+        knowledge_state=service.knowledge_state,
+        turns=[InterviewTurnResponse.model_validate(turn) for turn in turns],
     )
-
-
-def _turn_to_dict(turn: Any) -> dict[str, Any]:
-    return {
-        "id": turn.id,
-        "turn_number": turn.turn_number,
-        "question": turn.question,
-        "answer": turn.answer,
-        "answer_analysis": turn.answer_analysis,
-        "evaluation": turn.evaluation,
-        "decision": turn.decision,
-        "knowledge_state": turn.knowledge_state,
-        "pending_claim_ids": turn.pending_claim_ids,
-        "created_at": turn.created_at.isoformat(),
-    }

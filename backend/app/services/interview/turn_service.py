@@ -9,6 +9,7 @@ from app.ai.evaluation_engine.evaluator import AnswerEvaluator
 from app.ai.interviewer_brain.orchestrator import InterviewerBrainOrchestrator
 from app.ai.knowledge_intelligence.knowledge_state import KnowledgeStateTracker
 from app.ai.question_engine.generator import QuestionGenerator
+from app.core.exceptions import InterviewPipelineError
 from app.db.models import InterviewTurn
 from app.db.repositories import interview_repository, resume_repository
 from app.schemas.answer import AnswerAnalysis
@@ -70,6 +71,11 @@ class InterviewTurnService:
 
         self._sync_pending_claims()
 
+    @property
+    def current_turn_id(self) -> str | None:
+        """Identifier of the persisted turn currently awaiting an answer."""
+        return self._current_turn.id if self._current_turn is not None else None
+
     def start_interview(
         self, retrieved_knowledge: list[RetrievedKnowledge] | None = None
     ) -> GeneratedQuestion:
@@ -92,12 +98,15 @@ class InterviewTurnService:
             confidence="low",
         )
 
-        question = self.question_generator.generate_question(
-            decision=opening_decision,
-            difficulty=self.difficulty,
-            candidate_profile=self.candidate_profile,
-            retrieved_knowledge=retrieved_knowledge,
-        )
+        try:
+            question = self.question_generator.generate_question(
+                decision=opening_decision,
+                difficulty=self.difficulty,
+                candidate_profile=self.candidate_profile,
+                retrieved_knowledge=retrieved_knowledge,
+            )
+        except ValueError as exc:
+            raise InterviewPipelineError(str(exc)) from exc
 
         self.brain.conversation_state.current_topic = question.target_concept
         self.current_question = question
@@ -121,52 +130,55 @@ class InterviewTurnService:
 
         asked_question = self.current_question
 
-        analysis = self.answer_analyzer.analyze_answer(
-            question=asked_question.question,
-            answer=answer,
-            candidate_profile=self.candidate_profile,
-            interview_context=self.brain.get_interview_state(),
-        )
-        evaluation = self.evaluator.evaluate_answer(
-            question=asked_question.question,
-            answer=answer,
-            answer_analysis=analysis,
-        )
-        self.knowledge_state = self.knowledge_tracker.update_from_answer(
-            question=asked_question.question,
-            answer=answer,
-            answer_analysis=analysis,
-            answer_evaluation=evaluation,
-            current_state=self.knowledge_state,
-            resume_claims=(
-                self.candidate_profile.claims if self.candidate_profile else None
-            ),
-        )
+        try:
+            analysis = self.answer_analyzer.analyze_answer(
+                question=asked_question.question,
+                answer=answer,
+                candidate_profile=self.candidate_profile,
+                interview_context=self.brain.get_interview_state(),
+            )
+            evaluation = self.evaluator.evaluate_answer(
+                question=asked_question.question,
+                answer=answer,
+                answer_analysis=analysis,
+            )
+            self.knowledge_state = self.knowledge_tracker.update_from_answer(
+                question=asked_question.question,
+                answer=answer,
+                answer_analysis=analysis,
+                answer_evaluation=evaluation,
+                current_state=self.knowledge_state,
+                resume_claims=(
+                    self.candidate_profile.claims if self.candidate_profile else None
+                ),
+            )
 
-        self._sync_pending_claims()
+            self._sync_pending_claims()
 
-        decision = self.brain.decide_next_action(
-            candidate_profile=self.candidate_profile,
-            question=asked_question.question,
-            candidate_answer=answer,
-            answer_analysis=analysis,
-            answer_evaluation=evaluation,
-            knowledge_state=self.knowledge_state,
-            current_topic=asked_question.target_concept,
-        )
+            decision = self.brain.decide_next_action(
+                candidate_profile=self.candidate_profile,
+                question=asked_question.question,
+                candidate_answer=answer,
+                answer_analysis=analysis,
+                answer_evaluation=evaluation,
+                knowledge_state=self.knowledge_state,
+                current_topic=asked_question.target_concept,
+            )
 
-        self.difficulty = self._select_difficulty(decision.difficulty_direction)
+            self.difficulty = self._select_difficulty(decision.difficulty_direction)
 
-        question = self.question_generator.generate_question(
-            decision=decision,
-            difficulty=self.difficulty,
-            candidate_profile=self.candidate_profile,
-            answer_evaluation=evaluation,
-            knowledge_state=self.knowledge_state,
-            recent_turns=self.brain.conversation_state.get_recent_turns(3),
-            explored_concepts=list(self.brain.conversation_state.explored_concepts),
-            retrieved_knowledge=retrieved_knowledge,
-        )
+            question = self.question_generator.generate_question(
+                decision=decision,
+                difficulty=self.difficulty,
+                candidate_profile=self.candidate_profile,
+                answer_evaluation=evaluation,
+                knowledge_state=self.knowledge_state,
+                recent_turns=self.brain.conversation_state.get_recent_turns(3),
+                explored_concepts=list(self.brain.conversation_state.explored_concepts),
+                retrieved_knowledge=retrieved_knowledge,
+            )
+        except ValueError as exc:
+            raise InterviewPipelineError(str(exc)) from exc
 
         self._persist_answer(answer, analysis, evaluation, decision)
 

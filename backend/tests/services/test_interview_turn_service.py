@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.core.exceptions import InterviewPipelineError
 from app.schemas.answer import AnswerAnalysis, ResumeClaimRelationship
 from app.schemas.interview_decision import InterviewDecision
 from app.schemas.question import GeneratedQuestion
@@ -494,7 +495,7 @@ def test_answer_intelligence_failure_propagates():
         "LLM unavailable"
     )
 
-    with pytest.raises(ValueError, match="Failed to analyze answer"):
+    with pytest.raises(InterviewPipelineError, match="Failed to analyze answer"):
         service.submit_answer("An answer.")
 
     service.question_generator.generate_question.assert_not_called()
@@ -507,7 +508,7 @@ def test_interviewer_brain_failure_propagates():
         "Failed to reason about next action"
     )
 
-    with pytest.raises(ValueError, match="Failed to reason about next action"):
+    with pytest.raises(InterviewPipelineError, match="Failed to reason about next action"):
         service.submit_answer("An answer.")
 
     service.question_generator.generate_question.assert_not_called()
@@ -521,7 +522,7 @@ def test_question_generation_failure_propagates_and_keeps_pending_question():
         "Failed to generate question"
     )
 
-    with pytest.raises(ValueError, match="Failed to generate question"):
+    with pytest.raises(InterviewPipelineError, match="Failed to generate question"):
         service.submit_answer("An answer.")
 
     assert service.current_question is asked
