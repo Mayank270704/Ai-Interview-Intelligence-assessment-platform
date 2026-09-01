@@ -1,1 +1,11 @@
-export default function InterviewSetupPage() { return <main><h1>Interview setup</h1></main>; }
+import { Suspense } from "react";
+
+import InterviewSetupForm from "./InterviewSetupForm";
+
+export default function InterviewSetupPage() {
+  return (
+    <Suspense fallback={<main className="narrow">Loading…</main>}>
+      <InterviewSetupForm />
+    </Suspense>
+  );
+}

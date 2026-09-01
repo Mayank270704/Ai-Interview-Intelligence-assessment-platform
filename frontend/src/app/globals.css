@@ -8,3 +8,87 @@
 * { box-sizing: border-box; }
 body { margin: 0; }
 main { max-width: 960px; margin: 0 auto; padding: 6rem 1.5rem; }
+
+main.narrow { max-width: 640px; }
+
+.card {
+  background: #ffffff;
+  border: 1px solid #e2e5ea;
+  border-radius: 10px;
+  padding: 1.75rem;
+  margin-top: 1.5rem;
+}
+
+.button {
+  display: inline-block;
+  background: #1a56db;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.65rem 1.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.button:disabled {
+  background: #a7b4c9;
+  cursor: not-allowed;
+}
+
+.button.secondary {
+  background: transparent;
+  color: #1a56db;
+  border: 1px solid #1a56db;
+}
+
+.field {
+  display: block;
+  width: 100%;
+  margin-top: 0.4rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #c7ccd6;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.field:disabled { background: #f1f2f5; }
+
+.label { display: block; margin-top: 1.25rem; font-weight: 600; font-size: 0.9rem; }
+
+.error-banner {
+  background: #fdeceb;
+  border: 1px solid #f3b4ae;
+  color: #8a1f16;
+  border-radius: 6px;
+  padding: 0.85rem 1rem;
+  margin-top: 1.25rem;
+}
+
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.15rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: #eef1f6;
+  color: #445068;
+  margin-right: 0.4rem;
+}
+
+.badge.confidence-high { background: #e3f5e9; color: #1c7a3d; }
+.badge.confidence-medium { background: #fdf3d8; color: #92661a; }
+.badge.confidence-low { background: #fdeceb; color: #8a1f16; }
+.badge.status-supported { background: #e3f5e9; color: #1c7a3d; }
+.badge.status-unsupported { background: #fdeceb; color: #8a1f16; }
+.badge.status-uncertain { background: #fdf3d8; color: #92661a; }
+
+.progress-label { color: #5b6577; font-size: 0.9rem; margin-top: 0.5rem; }
+
+.transcript-turn { border-top: 1px solid #e2e5ea; padding: 1rem 0; }
+.transcript-turn:first-child { border-top: none; padding-top: 0; }
+.transcript-turn p { margin: 0.35rem 0; }
+.transcript-turn .question { font-weight: 600; }
+.transcript-turn .answer { color: #445068; }

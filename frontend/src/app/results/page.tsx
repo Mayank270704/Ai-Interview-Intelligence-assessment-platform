@@ -1,1 +1,11 @@
-export default function ResultsPage() { return <main><h1>Results</h1></main>; }
+import { Suspense } from "react";
+
+import ResultsSummary from "./ResultsSummary";
+
+export default function ResultsPage() {
+  return (
+    <Suspense fallback={<main className="narrow">Loading…</main>}>
+      <ResultsSummary />
+    </Suspense>
+  );
+}
