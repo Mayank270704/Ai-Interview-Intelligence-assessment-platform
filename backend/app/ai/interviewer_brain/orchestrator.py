@@ -56,6 +56,7 @@ class InterviewerBrainOrchestrator:
             question_count=self.conversation_state.question_count,
             context=context,
         )
+        decision = self._attach_claim_identity(decision)
 
         self._record_turn_and_update_state(
             question=question,
@@ -65,6 +66,18 @@ class InterviewerBrainOrchestrator:
         )
 
         return decision
+
+    def _attach_claim_identity(self, decision: InterviewDecision) -> InterviewDecision:
+        """Resolve the decision's free-text claim reference to the stable claim id."""
+        claim_text = decision.resume_claim_to_investigate
+        claim_id = (
+            self.conversation_state.pending_claim_id_for_text(claim_text)
+            if claim_text
+            else None
+        )
+        if claim_id == decision.resume_claim_id:
+            return decision
+        return decision.model_copy(update={"resume_claim_id": claim_id})
 
     def _record_turn_and_update_state(
         self,
@@ -85,9 +98,9 @@ class InterviewerBrainOrchestrator:
         if action in {"CONCLUDE_TOPIC", "CHANGE_TOPIC"}:
             self.conversation_state.mark_concept_explored(target_concept)
 
-    def mark_claim_investigated(self, claim: str) -> None:
-        """Mark a resume claim as having been investigated."""
-        self.conversation_state.resolve_pending_claim(claim)
+    def mark_claim_investigated(self, claim_id: str) -> None:
+        """Mark the resume claim with this stable id as having been investigated."""
+        self.conversation_state.resolve_pending_claim(claim_id)
 
     def mark_gap_resolved(self, gap: str) -> None:
         """Mark a knowledge gap as resolved."""

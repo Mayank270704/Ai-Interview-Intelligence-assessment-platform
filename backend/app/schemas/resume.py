@@ -5,6 +5,11 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
+def claim_identity(claim_id: Optional[str], claim_text: str) -> str:
+    """Stable identity of a resume claim, falling back to its text while unpersisted."""
+    return claim_id or claim_text.strip().lower()
+
+
 class Education(BaseModel):
     """Education entry."""
 
@@ -111,6 +116,11 @@ class Claim(BaseModel):
     resume_evidence: str = Field(
         ..., description="Exact quote from resume where claim appears"
     )
+
+    @property
+    def identity(self) -> str:
+        """The stable identity this claim is tracked by across the interview."""
+        return claim_identity(self.claim_id, self.claim_text)
 
 
 class CandidateIdentity(BaseModel):

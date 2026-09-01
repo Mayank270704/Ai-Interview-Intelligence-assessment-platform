@@ -41,17 +41,19 @@ def test_conversation_state_tracks_explored_concepts():
 
 
 def test_conversation_state_tracks_pending_claims_and_gaps():
-    """Conversation state should track pending resume claims and unresolved gaps."""
+    """Conversation state should track pending resume claims by their stable id."""
     state = InterviewConversationState("interview_123")
 
-    state.add_pending_claim("Improved model accuracy by 18%")
+    state.add_pending_claim("claim-accuracy", "Improved model accuracy by 18%")
     state.add_unresolved_gap("No details about evaluation metrics")
 
-    assert "Improved model accuracy by 18%" in state.pending_claims
+    assert state.pending_claim_ids == ["claim-accuracy"]
+    assert state.pending_claims == ["Improved model accuracy by 18%"]
     assert "No details about evaluation metrics" in state.unresolved_gaps
 
-    state.resolve_pending_claim("Improved model accuracy by 18%")
-    assert "Improved model accuracy by 18%" not in state.pending_claims
+    state.resolve_pending_claim("claim-accuracy")
+    assert state.pending_claim_ids == []
+    assert state.pending_claims == []
 
 
 def test_reasoning_engine_decides_deepen_for_strong_answer():
@@ -335,10 +337,14 @@ def test_interviewer_brain_tracks_state_changes():
     """Orchestrator should update internal state based on decisions."""
     brain = InterviewerBrainOrchestrator("interview_789")
 
-    brain.conversation_state.add_pending_claim("Implemented distributed training")
+    brain.conversation_state.add_pending_claim(
+        "claim-distributed", "Implemented distributed training"
+    )
+    assert brain.conversation_state.pending_claim_ids == ["claim-distributed"]
     assert "Implemented distributed training" in brain.conversation_state.pending_claims
 
-    brain.mark_claim_investigated("Implemented distributed training")
+    brain.mark_claim_investigated("claim-distributed")
+    assert brain.conversation_state.pending_claim_ids == []
     assert "Implemented distributed training" not in brain.conversation_state.pending_claims
 
     brain.conversation_state.add_unresolved_gap("No details on fault tolerance")

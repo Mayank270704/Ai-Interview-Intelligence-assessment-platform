@@ -4,6 +4,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from app.schemas.resume import claim_identity
+
 ConfidenceLevel = Literal["low", "medium", "high"]
 ClaimVerificationStatus = Literal["supported", "unsupported", "uncertain"]
 
@@ -53,6 +55,11 @@ class ClaimVerification(BaseModel):
         default_factory=list,
         description="Additional context about how the claim was evaluated",
     )
+
+    @property
+    def identity(self) -> str:
+        """The stable identity of the resume claim this verification belongs to."""
+        return claim_identity(self.claim_id, self.claim_text)
 
 
 class CandidateKnowledgeState(BaseModel):

@@ -49,6 +49,13 @@ class InterviewDecision(BaseModel):
         None,
         description="If INVESTIGATE_CLAIM, the specific resume claim to verify",
     )
+    resume_claim_id: Optional[str] = Field(
+        None,
+        description=(
+            "Stable identifier of the resume claim being investigated. Assigned by the "
+            "Interviewer Brain from its pending claims, not chosen by the model."
+        ),
+    )
     should_probe_further: bool = Field(
         default=True,
         description="Whether the interviewer should continue probing the current topic or move on",

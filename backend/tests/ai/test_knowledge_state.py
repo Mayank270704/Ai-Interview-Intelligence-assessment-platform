@@ -398,8 +398,11 @@ def test_claim_verification_keeps_earlier_status_when_a_later_answer_is_uncertai
     assert any("conflicts" in note for note in contradicted.notes)
 
 
-def _claim(text: str = "Improved model accuracy by 18%") -> Claim:
+def _claim(
+    text: str = "Improved model accuracy by 18%", claim_id: str | None = None
+) -> Claim:
     return Claim(
+        claim_id=claim_id,
         claim_text=text,
         category="quantitative",
         context="Sentiment analysis project",
@@ -638,7 +641,10 @@ def test_concept_evidence_accumulates_per_concept_across_turns():
 def test_only_well_evidenced_claims_count_as_sufficiently_verified():
     """Support with accumulated evidence resolves a claim; weaker or conflicting states do not."""
     tracker = KnowledgeStateTracker()
-    claims = [_claim(), _claim("Led a team of six engineers")]
+    claims = [
+        _claim(claim_id="claim-accuracy"),
+        _claim("Led a team of six engineers", claim_id="claim-team"),
+    ]
 
     thin_support = _update(
         tracker,
@@ -655,7 +661,7 @@ def test_only_well_evidenced_claims_count_as_sufficiently_verified():
         resume_claims=claims,
     )
     assert thin_support.claim_verifications[0].confidence == "medium"
-    assert tracker.sufficiently_verified_claims(thin_support) == []
+    assert tracker.sufficiently_verified_claim_ids(thin_support) == []
 
     corroborated = _update(
         tracker,
@@ -672,9 +678,7 @@ def test_only_well_evidenced_claims_count_as_sufficiently_verified():
         current_state=thin_support,
         resume_claims=claims,
     )
-    assert tracker.sufficiently_verified_claims(corroborated) == [
-        "Improved model accuracy by 18%"
-    ]
+    assert tracker.sufficiently_verified_claim_ids(corroborated) == ["claim-accuracy"]
 
     contradicted = _update(
         tracker,
@@ -691,7 +695,7 @@ def test_only_well_evidenced_claims_count_as_sufficiently_verified():
         current_state=corroborated,
         resume_claims=claims,
     )
-    assert tracker.sufficiently_verified_claims(contradicted) == []
+    assert tracker.sufficiently_verified_claim_ids(contradicted) == []
 
 
 def test_missing_concept_is_not_recorded_as_a_demonstrated_absence():

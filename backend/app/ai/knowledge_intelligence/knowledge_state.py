@@ -144,11 +144,6 @@ class KnowledgeStateTracker:
             if claim.claim_text.strip().lower() in referenced
         ]
 
-    @staticmethod
-    def _claim_key(claim_id: str | None, claim_text: str) -> str:
-        """Identify a claim by its stable id, falling back to its text when unpersisted."""
-        return claim_id or claim_text.strip().lower()
-
     def _accumulate_claim_verifications(
         self,
         resume_claims: list[Claim],
@@ -158,12 +153,11 @@ class KnowledgeStateTracker:
         """Verify the claims this answer touches and merge them into earlier verifications."""
         verifications = [entry.model_copy(deep=True) for entry in accumulated]
         positions = {
-            self._claim_key(entry.claim_id, entry.claim_text): index
-            for index, entry in enumerate(verifications)
+            entry.identity: index for index, entry in enumerate(verifications)
         }
 
         for claim in self._claims_referenced_by_answer(resume_claims, answer_analysis):
-            key = self._claim_key(claim.claim_id, claim.claim_text)
+            key = claim.identity
             index = positions.get(key)
             verification = self.verify_resume_claim(
                 claim,
@@ -179,10 +173,10 @@ class KnowledgeStateTracker:
         return verifications
 
     @staticmethod
-    def sufficiently_verified_claims(state: CandidateKnowledgeState) -> list[str]:
-        """Claims whose accumulated evidence supports them well enough to stop investigating."""
+    def sufficiently_verified_claim_ids(state: CandidateKnowledgeState) -> list[str]:
+        """Stable ids of the claims whose accumulated evidence resolves them."""
         return [
-            verification.claim_text
+            verification.identity
             for verification in state.claim_verifications
             if verification.status == "supported" and verification.confidence == "high"
         ]

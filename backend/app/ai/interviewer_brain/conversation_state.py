@@ -14,7 +14,7 @@ class InterviewConversationState:
         self.conversation_turns: list[dict[str, Any]] = []
         self.current_topic: str = ""
         self.explored_concepts: set[str] = set()
-        self.pending_claims: list[str] = []
+        self._pending_claims: dict[str, str] = {}
         self.unresolved_gaps: list[str] = []
         self.question_count: int = 0
 
@@ -40,15 +40,32 @@ class InterviewConversationState:
         """Mark a concept as sufficiently explored."""
         self.explored_concepts.add(concept.lower())
 
-    def add_pending_claim(self, claim: str) -> None:
-        """Add a resume claim to the list of pending verification."""
-        if claim and claim not in self.pending_claims:
-            self.pending_claims.append(claim)
+    @property
+    def pending_claims(self) -> list[str]:
+        """Human-readable text of the resume claims still pending verification."""
+        return list(self._pending_claims.values())
 
-    def resolve_pending_claim(self, claim: str) -> None:
-        """Remove a claim from pending list after verification."""
-        if claim in self.pending_claims:
-            self.pending_claims.remove(claim)
+    @property
+    def pending_claim_ids(self) -> list[str]:
+        """Stable identities of the resume claims still pending verification."""
+        return list(self._pending_claims)
+
+    def add_pending_claim(self, claim_id: str, claim_text: str) -> None:
+        """Track a resume claim, identified by its stable id, as pending verification."""
+        if claim_id and claim_id not in self._pending_claims:
+            self._pending_claims[claim_id] = claim_text
+
+    def resolve_pending_claim(self, claim_id: str) -> None:
+        """Stop tracking a resume claim once its stable id has been resolved."""
+        self._pending_claims.pop(claim_id, None)
+
+    def pending_claim_id_for_text(self, claim_text: str) -> str | None:
+        """Resolve claim text produced by the LLM back to the stable id it refers to."""
+        target = claim_text.strip().lower()
+        for claim_id, text in self._pending_claims.items():
+            if text.strip().lower() == target:
+                return claim_id
+        return None
 
     def add_unresolved_gap(self, gap: str) -> None:
         """Record an unresolved knowledge gap."""
@@ -87,7 +104,7 @@ class InterviewConversationState:
             "question_count": self.question_count,
             "current_topic": self.current_topic,
             "explored_concepts": list(self.explored_concepts),
-            "pending_claims": list(self.pending_claims),
+            "pending_claims": self.pending_claims,
             "unresolved_gaps": list(self.unresolved_gaps),
             "recent_turns": self.get_recent_turns(3),
         }

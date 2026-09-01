@@ -260,7 +260,7 @@ class InterviewTurnService:
             evaluation=evaluation,
             decision=decision,
             knowledge_state=self.knowledge_state,
-            pending_claim_ids=self._pending_claim_ids(),
+            pending_claim_ids=self.brain.conversation_state.pending_claim_ids,
         )
         interview_repository.update_interview_difficulty(
             self.session,
@@ -268,29 +268,14 @@ class InterviewTurnService:
             self.difficulty,
         )
 
-    def _pending_claim_ids(self) -> list[str]:
-        """Stable identifiers of the resume claims still pending investigation."""
-        if self.candidate_profile is None:
-            return []
-        ids_by_text = {
-            claim.claim_text: claim.claim_id
-            for claim in self.candidate_profile.claims
-            if claim.claim_id
-        }
-        return [
-            ids_by_text[text]
-            for text in self.brain.conversation_state.pending_claims
-            if text in ids_by_text
-        ]
-
     def _restore_pending_claims(self, pending_claim_ids: list[str] | None) -> None:
         """Restore the pending claim list recorded on the last answered turn."""
         if pending_claim_ids is None or self.candidate_profile is None:
             return
         pending = set(pending_claim_ids)
         for claim in self.candidate_profile.claims:
-            if claim.claim_id and claim.claim_id not in pending:
-                self.brain.mark_claim_investigated(claim.claim_text)
+            if claim.identity not in pending:
+                self.brain.mark_claim_investigated(claim.identity)
 
     def _sync_pending_claims(self) -> None:
         """Keep the brain's pending claims aligned with the accumulated verification state."""
@@ -298,13 +283,15 @@ class InterviewTurnService:
             return
 
         verified = set(
-            self.knowledge_tracker.sufficiently_verified_claims(self.knowledge_state)
+            self.knowledge_tracker.sufficiently_verified_claim_ids(self.knowledge_state)
         )
         for claim in self.candidate_profile.claims:
-            if claim.claim_text in verified:
-                self.brain.mark_claim_investigated(claim.claim_text)
+            if claim.identity in verified:
+                self.brain.mark_claim_investigated(claim.identity)
             else:
-                self.brain.conversation_state.add_pending_claim(claim.claim_text)
+                self.brain.conversation_state.add_pending_claim(
+                    claim.identity, claim.claim_text
+                )
 
     def _select_difficulty(self, direction: DifficultyDirection) -> QuestionDifficulty:
         """Apply the decided difficulty direction to the current difficulty level."""

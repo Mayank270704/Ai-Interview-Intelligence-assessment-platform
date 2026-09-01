@@ -132,15 +132,8 @@ def _persisted_interview(session):
     return candidate, resume, interview, profile
 
 
-def _service(session, interview, profile) -> InterviewTurnService:
-    """Build a persisting service whose LLM-backed components are mocked."""
-    service = InterviewTurnService(
-        interview_id=interview.id,
-        interview_objective=interview.objective,
-        candidate_profile=profile,
-        difficulty=interview.difficulty,
-        session=session,
-    )
+def _mock_components(service: InterviewTurnService) -> InterviewTurnService:
+    """Replace the service's LLM-backed components with deterministic doubles."""
     service.question_generator.generate_question = MagicMock(return_value=_question())
     service.answer_analyzer.llm_client = MagicMock()
     service.answer_analyzer.llm_client.generate_structured.return_value = _analysis()
@@ -148,6 +141,19 @@ def _service(session, interview, profile) -> InterviewTurnService:
         return_value=_decision()
     )
     return service
+
+
+def _service(session, interview, profile) -> InterviewTurnService:
+    """Build a persisting service whose LLM-backed components are mocked."""
+    return _mock_components(
+        InterviewTurnService(
+            interview_id=interview.id,
+            interview_objective=interview.objective,
+            candidate_profile=profile,
+            difficulty=interview.difficulty,
+            session=session,
+        )
+    )
 
 
 def test_candidate_is_created_with_a_stable_id(session):
@@ -299,6 +305,90 @@ def test_interview_can_be_reloaded_after_the_service_is_recreated(session):
         profile.claims[0].claim_id
     )
     assert restored.brain.conversation_state.pending_claims == [TEAM_CLAIM]
+
+
+def test_pending_claims_are_tracked_by_their_stable_claim_id(session):
+    """The brain tracks pending claims by the ResumeClaim id, not by the claim text."""
+    _, _, interview, profile = _persisted_interview(session)
+    accuracy_id = profile.claims[0].claim_id
+    team_id = profile.claims[1].claim_id
+    service = _service(session, interview, profile)
+    service.answer_analyzer.llm_client.generate_structured.side_effect = [
+        _analysis(ACCURACY_CLAIM),
+        _analysis(ACCURACY_CLAIM),
+    ]
+
+    service.start_interview()
+    service.submit_answer("We measured an 18% lift against the baseline.")
+    service.submit_answer("The baseline was the previous production model.")
+    session.commit()
+
+    assert service.brain.conversation_state.pending_claim_ids == [team_id]
+    assert service.brain.conversation_state.pending_claims == [TEAM_CLAIM]
+    assert accuracy_id not in service.brain.conversation_state.pending_claim_ids
+
+    restored = InterviewTurnService.load(session, interview.id)
+    assert restored.brain.conversation_state.pending_claim_ids == [team_id]
+
+
+def test_investigated_claim_is_persisted_with_its_stable_id(session):
+    """A claim investigation decision records the stable id of the claim it targets."""
+    _, _, interview, profile = _persisted_interview(session)
+    team_id = profile.claims[1].claim_id
+    service = _service(session, interview, profile)
+    service.brain.reasoning_engine.decide_next_action.return_value = InterviewDecision(
+        action="INVESTIGATE_CLAIM",
+        target_concept="team leadership",
+        reasoning="The leadership claim is still unverified.",
+        reasoning_evidence=["No leadership evidence so far"],
+        difficulty_direction="maintain",
+        resume_claim_to_investigate=TEAM_CLAIM,
+        confidence="medium",
+    )
+
+    service.start_interview()
+    service.submit_answer("I fine-tuned BERT on support tickets.")
+    session.commit()
+
+    stored_decision = interview_repository.get_turns(session, interview.id)[0].decision
+    assert stored_decision["resume_claim_to_investigate"] == TEAM_CLAIM
+    assert stored_decision["resume_claim_id"] == team_id
+
+    restored = InterviewTurnService.load(session, interview.id)
+    assert restored.brain.conversation_state.pending_claim_ids == [
+        claim.claim_id for claim in profile.claims
+    ]
+
+
+def test_accumulated_evidence_survives_reloading_and_continues(session):
+    """Evidence gathered before a restart must still accumulate after the service is rebuilt."""
+    _, _, interview, profile = _persisted_interview(session)
+    accuracy_id = profile.claims[0].claim_id
+    service = _service(session, interview, profile)
+    service.answer_analyzer.llm_client.generate_structured.side_effect = [
+        _analysis(ACCURACY_CLAIM)
+    ]
+
+    service.start_interview()
+    service.submit_answer("We measured an 18% lift against the baseline.")
+    session.commit()
+
+    restored = _mock_components(InterviewTurnService.load(session, interview.id))
+    restored.answer_analyzer.llm_client.generate_structured.return_value = _analysis(
+        ACCURACY_CLAIM
+    )
+    restored.submit_answer("The baseline was the previous production model.")
+    session.commit()
+
+    verifications = restored.knowledge_state.claim_verifications
+    assert [entry.claim_id for entry in verifications] == [accuracy_id]
+    assert verifications[0].confidence == "high"
+    assert {
+        entry.concept for entry in restored.knowledge_state.concept_states
+    } == {"fine_tuning", "tokenization"}
+    assert [
+        turn.turn_number for turn in interview_repository.get_turns(session, interview.id)
+    ] == [1, 2, 3]
 
 
 def test_duplicate_turn_number_fails_and_the_transaction_rolls_back(session):
