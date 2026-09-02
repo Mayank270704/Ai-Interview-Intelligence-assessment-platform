@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -21,6 +21,7 @@ class Resume(Base):
         String(36), ForeignKey("candidates.id", ondelete="CASCADE"), index=True
     )
     profile: Mapped[dict[str, Any]] = mapped_column(JSONColumn)
+    storage_path: Mapped[Optional[str]] = mapped_column(String(255))
     created_at: Mapped[datetime] = created_at_column()
 
     candidate: Mapped["Candidate"] = relationship(back_populates="resumes")  # noqa: F821

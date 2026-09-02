@@ -213,6 +213,26 @@ def test_interview_is_created_for_a_candidate_and_resume(session):
     assert loaded.difficulty == "medium"
 
 
+def test_new_interview_starts_in_created_status(session):
+    """A freshly created interview starts in the created lifecycle state."""
+    _, _, interview, _ = _persisted_interview(session)
+
+    assert interview.status == "created"
+
+
+def test_interview_lifecycle_transitions_persist(session):
+    """Lifecycle transitions are written through and visible on reload."""
+    _, _, interview, _ = _persisted_interview(session)
+
+    interview_repository.mark_in_progress(session, interview.id)
+    session.commit()
+    assert interview_repository.get_interview(session, interview.id).status == "in_progress"
+
+    interview_repository.mark_completed(session, interview.id)
+    session.commit()
+    assert interview_repository.get_interview(session, interview.id).status == "completed"
+
+
 def test_interview_turn_persists_question_answer_and_ai_output(session):
     """A turn stores the question and everything the pipeline derived from the answer."""
     _, _, interview, profile = _persisted_interview(session)

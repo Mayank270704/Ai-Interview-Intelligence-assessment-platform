@@ -36,7 +36,10 @@ export default function InterviewTextSession() {
     return (
       <main className="narrow">
         <h1>Interview</h1>
-        <p className="progress-label">Loading your interview…</p>
+        <p className="progress-label">
+          <span className="spinner" aria-hidden="true" />
+          Loading your interview…
+        </p>
       </main>
     );
   }
@@ -69,8 +72,8 @@ export default function InterviewTextSession() {
       )}
 
       {question && (
-        <div className="card">
-          <p style={{ fontSize: "1.1rem", fontWeight: 600 }}>{question.question}</p>
+        <div className="card question-card">
+          <p className="question-text">{question.question}</p>
         </div>
       )}
 
@@ -97,14 +100,15 @@ export default function InterviewTextSession() {
           </div>
         )}
 
-        <p>
+        <div className="actions">
           <button type="submit" className="button" disabled={submitting || !answer.trim() || !question}>
+            {submitting && <span className="spinner" aria-hidden="true" />}
             {submitting ? "Submitting…" : "Submit Answer"}
-          </button>{" "}
+          </button>
           <button type="button" className="button secondary" onClick={handleEndInterview} disabled={submitting}>
             End Interview
           </button>
-        </p>
+        </div>
       </form>
     </main>
   );

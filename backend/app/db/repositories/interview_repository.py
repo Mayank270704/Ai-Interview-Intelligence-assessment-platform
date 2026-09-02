@@ -5,6 +5,11 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.constants import (
+    INTERVIEW_STATUS_COMPLETED,
+    INTERVIEW_STATUS_CREATED,
+    INTERVIEW_STATUS_IN_PROGRESS,
+)
 from app.db.models import Interview, InterviewTurn
 from app.schemas.answer import AnswerAnalysis
 from app.schemas.evaluation import AnswerEvaluation
@@ -26,6 +31,7 @@ def create_interview(
         resume_id=resume_id,
         objective=objective,
         difficulty=difficulty,
+        status=INTERVIEW_STATUS_CREATED,
     )
     session.add(interview)
     session.flush()
@@ -52,6 +58,26 @@ def update_interview_difficulty(
     if interview is None:
         raise ValueError(f"Interview {interview_id} was not found.")
     interview.difficulty = difficulty
+    session.flush()
+    return interview
+
+
+def mark_in_progress(session: Session, interview_id: str) -> Interview:
+    """Transition an interview to in_progress."""
+    interview = session.get(Interview, interview_id)
+    if interview is None:
+        raise ValueError(f"Interview {interview_id} was not found.")
+    interview.status = INTERVIEW_STATUS_IN_PROGRESS
+    session.flush()
+    return interview
+
+
+def mark_completed(session: Session, interview_id: str) -> Interview:
+    """Transition an interview to completed."""
+    interview = session.get(Interview, interview_id)
+    if interview is None:
+        raise ValueError(f"Interview {interview_id} was not found.")
+    interview.status = INTERVIEW_STATUS_COMPLETED
     session.flush()
     return interview
 

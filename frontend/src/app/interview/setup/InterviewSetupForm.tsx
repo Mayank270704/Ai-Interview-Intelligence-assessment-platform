@@ -6,6 +6,8 @@ import { useState } from "react";
 import type { QuestionDifficulty } from "@/services/api/types";
 import { startInterview } from "@/services/interview";
 
+type InterviewMode = "text" | "voice" | "video";
+
 export default function InterviewSetupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -13,6 +15,7 @@ export default function InterviewSetupForm() {
 
   const [objective, setObjective] = useState("");
   const [difficulty, setDifficulty] = useState<QuestionDifficulty>("medium");
+  const [mode, setMode] = useState<InterviewMode>("text");
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -36,7 +39,7 @@ export default function InterviewSetupForm() {
 
     try {
       const question = await startInterview(resumeId, objective.trim(), difficulty);
-      router.push(`/interview/text?interviewId=${question.interview_id}`);
+      router.push(`/interview/${mode}?interviewId=${question.interview_id}`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Something went wrong.");
       setSubmitting(false);
@@ -45,8 +48,10 @@ export default function InterviewSetupForm() {
 
   return (
     <main className="narrow">
-      <h1>Set up your interview</h1>
-      <p>Tell us what role or topic this interview should focus on.</p>
+      <div className="page-header">
+        <h1>Set up your interview</h1>
+        <p>Tell us what role or topic this interview should focus on.</p>
+      </div>
 
       <form onSubmit={handleSubmit}>
         <label className="label" htmlFor="objective">
@@ -78,13 +83,29 @@ export default function InterviewSetupForm() {
           <option value="hard">Hard</option>
         </select>
 
+        <label className="label" htmlFor="mode">
+          Interview format
+        </label>
+        <select
+          id="mode"
+          className="field"
+          value={mode}
+          onChange={(event) => setMode(event.target.value as InterviewMode)}
+          disabled={submitting}
+        >
+          <option value="text">Text — type your answers</option>
+          <option value="voice">Voice — speak your answers</option>
+          <option value="video">Video — record yourself answering</option>
+        </select>
+
         {errorMessage && <div className="error-banner">{errorMessage}</div>}
 
-        <p>
+        <div className="actions">
           <button type="submit" className="button" disabled={submitting || !objective.trim()}>
+            {submitting && <span className="spinner" aria-hidden="true" />}
             {submitting ? "Starting interview…" : "Start Interview"}
           </button>
-        </p>
+        </div>
       </form>
     </main>
   );

@@ -25,6 +25,7 @@ class Interview(Base):
     )
     objective: Mapped[str] = mapped_column(Text)
     difficulty: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20))
     created_at: Mapped[datetime] = created_at_column()
 
     candidate: Mapped["Candidate"] = relationship(back_populates="interviews")  # noqa: F821

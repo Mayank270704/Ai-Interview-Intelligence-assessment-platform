@@ -1,6 +1,7 @@
 """Interview API schemas."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -10,6 +11,8 @@ from app.schemas.interview_decision import InterviewDecision
 from app.schemas.knowledge_state import CandidateKnowledgeState
 from app.schemas.question import GeneratedQuestion, QuestionDifficulty
 from app.schemas.resume import CandidateProfile
+
+InterviewStatus = Literal["created", "in_progress", "completed"]
 
 
 class ResumeCreateRequest(BaseModel):
@@ -52,6 +55,7 @@ class InterviewQuestionResponse(BaseModel):
     candidate_id: str
     resume_id: str | None = None
     difficulty: QuestionDifficulty
+    status: InterviewStatus
     turn_id: str
     question: GeneratedQuestion
 
@@ -83,6 +87,7 @@ class InterviewAnswerResponse(BaseModel):
     next_turn_id: str
     next_question: GeneratedQuestion
     difficulty: QuestionDifficulty
+    status: InterviewStatus
     knowledge_state: CandidateKnowledgeState
 
 
@@ -111,6 +116,7 @@ class InterviewStateResponse(BaseModel):
     resume_id: str | None = None
     objective: str
     difficulty: QuestionDifficulty
+    status: InterviewStatus
     current_question: GeneratedQuestion | None = None
     knowledge_state: CandidateKnowledgeState
     turns: list[InterviewTurnResponse]

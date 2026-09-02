@@ -1,5 +1,6 @@
 import { apiRequest } from "@/services/api/client";
 import type {
+  FinalAssessment,
   InterviewAnswerResponse,
   InterviewQuestionResponse,
   InterviewStartRequest,
@@ -34,4 +35,18 @@ export async function submitAnswer(
 
 export async function getInterview(interviewId: string): Promise<InterviewStateResponse> {
   return apiRequest<InterviewStateResponse>(`/interviews/${interviewId}`);
+}
+
+export async function completeInterview(interviewId: string): Promise<InterviewStateResponse> {
+  return apiRequest<InterviewStateResponse>(`/interviews/${interviewId}/complete`, {
+    method: "POST",
+  });
+}
+
+export async function createAssessment(interviewId: string): Promise<FinalAssessment> {
+  return apiRequest<FinalAssessment>(`/interviews/${interviewId}/assessment`, { method: "POST" });
+}
+
+export async function getAssessment(interviewId: string): Promise<FinalAssessment> {
+  return apiRequest<FinalAssessment>(`/interviews/${interviewId}/assessment`);
 }

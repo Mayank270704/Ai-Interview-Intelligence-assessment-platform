@@ -14,6 +14,29 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 # Database Configuration
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+# Supabase Storage Configuration
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_RESUME_BUCKET = os.getenv("SUPABASE_RESUME_BUCKET", "resumes")
+
+# Supabase Auth Configuration
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+
+# Voice (Speech-to-Text / Text-to-Speech) Configuration
+VOICE_PROVIDER = os.getenv("VOICE_PROVIDER", "gemini").lower()
+GEMINI_TTS_MODEL = os.getenv("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
+
+# CORS Configuration
+# Comma-separated list of browser origins allowed to call this API. Deployments
+# must set this explicitly; the default only covers local frontend development.
+CORS_ALLOW_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ALLOW_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
+    ).split(",")
+    if origin.strip()
+]
+
 def validate_llm_config() -> None:
     """Validate LLM settings at the LLM boundary."""
     if LLM_PROVIDER == "gemini" and not GEMINI_API_KEY:

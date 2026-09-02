@@ -3,12 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import RequireAuth from "@/components/RequireAuth";
 import { uploadResume } from "@/services/resume";
 import type { ResumeUploadResponse } from "@/services/api/types";
 
 type UploadStatus = "idle" | "uploading" | "done" | "error";
 
-export default function ResumeUploadPage() {
+function ResumeUpload() {
   const router = useRouter();
   const [status, setStatus] = useState<UploadStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -46,12 +47,21 @@ export default function ResumeUploadPage() {
     router.push(`/interview/setup?${params.toString()}`);
   };
 
+  const handleAnalyzeResume = () => {
+    if (!result) {
+      return;
+    }
+    router.push(`/resume/analysis?resumeId=${result.resume_id}`);
+  };
+
   const profile = result?.profile;
 
   return (
     <main className="narrow">
-      <h1>Upload your resume</h1>
-      <p>Upload a PDF resume to build your candidate profile and start an interview.</p>
+      <div className="page-header">
+        <h1>Upload your resume</h1>
+        <p>Upload a PDF resume to build your candidate profile and start an interview.</p>
+      </div>
 
       <label className="label" htmlFor="resume-file">
         Resume (PDF)
@@ -65,7 +75,12 @@ export default function ResumeUploadPage() {
         disabled={status === "uploading"}
       />
 
-      {status === "uploading" && <p className="progress-label">Uploading and processing your resume…</p>}
+      {status === "uploading" && (
+        <p className="progress-label">
+          <span className="spinner" aria-hidden="true" />
+          Uploading and processing your resume…
+        </p>
+      )}
 
       {status === "error" && errorMessage && <div className="error-banner">{errorMessage}</div>}
 
@@ -76,13 +91,13 @@ export default function ResumeUploadPage() {
           {profile.professional_summary && <p>{profile.professional_summary}</p>}
 
           {profile.skills.length > 0 && (
-            <p>
+            <div className="badge-row">
               {profile.skills.slice(0, 8).map((skill) => (
                 <span key={skill.name} className="badge">
                   {skill.name}
                 </span>
               ))}
-            </p>
+            </div>
           )}
 
           <p className="progress-label">
@@ -90,11 +105,24 @@ export default function ResumeUploadPage() {
             {profile.claims.length} claim{profile.claims.length === 1 ? "" : "s"} identified
           </p>
 
-          <button type="button" className="button" onClick={handleStartInterview}>
-            Start Interview
-          </button>
+          <div className="actions">
+            <button type="button" className="button" onClick={handleStartInterview}>
+              Start Interview
+            </button>
+            <button type="button" className="button secondary" onClick={handleAnalyzeResume}>
+              Analyze resume
+            </button>
+          </div>
         </div>
       )}
     </main>
+  );
+}
+
+export default function ResumeUploadPage() {
+  return (
+    <RequireAuth>
+      <ResumeUpload />
+    </RequireAuth>
   );
 }

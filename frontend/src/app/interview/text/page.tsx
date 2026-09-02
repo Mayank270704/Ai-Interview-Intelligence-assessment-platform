@@ -1,11 +1,24 @@
 import { Suspense } from "react";
 
+import RequireAuth from "@/components/RequireAuth";
+
 import InterviewTextSession from "./InterviewTextSession";
 
 export default function TextInterviewPage() {
   return (
-    <Suspense fallback={<main className="narrow">Loading…</main>}>
-      <InterviewTextSession />
-    </Suspense>
+    <RequireAuth>
+      <Suspense
+        fallback={
+          <main className="narrow">
+            <p className="progress-label">
+              <span className="spinner" aria-hidden="true" />
+              Loading…
+            </p>
+          </main>
+        }
+      >
+        <InterviewTextSession />
+      </Suspense>
+    </RequireAuth>
   );
 }

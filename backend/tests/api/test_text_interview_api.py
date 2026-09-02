@@ -15,15 +15,19 @@ from app.ai.answer_intelligence.answer_analyzer import AnswerAnalyzer
 from app.ai.interviewer_brain.reasoning_engine import InterviewReasoningEngine
 from app.ai.llm.client import LLMClient
 from app.ai.question_engine.generator import QuestionGenerator
+from app.core.security import get_current_user
 from app.db.base import Base
 from app.db.database import get_session
 from app.db.models import Candidate, Interview, InterviewTurn, Resume
-from app.db.repositories import candidate_repository
+from app.db.repositories import candidate_repository, interview_repository
+from app.db.supabase_auth import AuthenticatedUser
 from app.main import app
 from app.schemas.answer import AnswerAnalysis, ResumeClaimRelationship
 from app.schemas.interview_decision import InterviewDecision
 from app.schemas.question import GeneratedQuestion
 from app.schemas.resume import CandidateIdentity, CandidateProfile, Claim, Skill
+
+TEST_USER = AuthenticatedUser(id="test-user-1", email="tester@example.com", access_token="test-token")
 
 
 @pytest.fixture
@@ -54,6 +58,7 @@ def client(api_session: Session) -> Iterator[TestClient]:
             raise
 
     app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[get_current_user] = lambda: TEST_USER
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -589,3 +594,111 @@ def test_persistence_failure_returns_503(client: TestClient, monkeypatch):
     response = client.post("/api/v1/candidates", json={"full_name": "Jane Doe"})
 
     assert response.status_code == 503
+
+
+def test_started_interview_is_in_progress(client: TestClient, mocked_ai):
+    candidate_id = _create_candidate(client)
+    resume_id = _create_resume(client, candidate_id)
+
+    started = _start_interview(client, resume_id)
+
+    assert started["status"] == "in_progress"
+
+
+def test_get_interview_reflects_current_status(client: TestClient, mocked_ai):
+    candidate_id = _create_candidate(client)
+    resume_id = _create_resume(client, candidate_id)
+    started = _start_interview(client, resume_id)
+
+    body = client.get(f"/api/v1/interviews/{started['interview_id']}").json()
+
+    assert body["status"] == "in_progress"
+
+
+def test_completing_an_interview_transitions_to_completed(
+    client: TestClient, api_session: Session, mocked_ai
+):
+    candidate_id = _create_candidate(client)
+    resume_id = _create_resume(client, candidate_id)
+    started = _start_interview(client, resume_id)
+
+    response = client.post(f"/api/v1/interviews/{started['interview_id']}/complete")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "completed"
+    assert body["interview_id"] == started["interview_id"]
+
+    reloaded = api_session.get(Interview, started["interview_id"])
+    assert reloaded.status == "completed"
+
+
+def test_completed_interview_status_survives_refetch(client: TestClient, mocked_ai):
+    candidate_id = _create_candidate(client)
+    resume_id = _create_resume(client, candidate_id)
+    started = _start_interview(client, resume_id)
+    client.post(f"/api/v1/interviews/{started['interview_id']}/complete")
+
+    body = client.get(f"/api/v1/interviews/{started['interview_id']}").json()
+
+    assert body["status"] == "completed"
+
+
+def test_completing_an_already_completed_interview_is_rejected(
+    client: TestClient, mocked_ai
+):
+    candidate_id = _create_candidate(client)
+    resume_id = _create_resume(client, candidate_id)
+    started = _start_interview(client, resume_id)
+    client.post(f"/api/v1/interviews/{started['interview_id']}/complete")
+
+    response = client.post(f"/api/v1/interviews/{started['interview_id']}/complete")
+
+    assert response.status_code == 409
+
+
+def test_completing_unknown_interview_returns_404(client: TestClient):
+    response = client.post("/api/v1/interviews/missing/complete")
+
+    assert response.status_code == 404
+
+
+def test_completing_an_interview_still_in_created_status_is_rejected(
+    client: TestClient, api_session: Session
+):
+    candidate = candidate_repository.create_candidate(
+        api_session, full_name="Jane Doe", owner_user_id=TEST_USER.id
+    )
+    interview = interview_repository.create_interview(
+        api_session,
+        candidate_id=candidate.id,
+        objective="Machine Learning",
+        difficulty="medium",
+    )
+    api_session.commit()
+
+    response = client.post(f"/api/v1/interviews/{interview.id}/complete")
+
+    assert response.status_code == 409
+
+
+def test_completed_interview_rejects_new_answers(
+    client: TestClient, api_session: Session, mocked_ai
+):
+    candidate_id = _create_candidate(client)
+    resume_id = _create_resume(client, candidate_id)
+    started = _start_interview(client, resume_id)
+    client.post(f"/api/v1/interviews/{started['interview_id']}/complete")
+
+    response = client.post(
+        f"/api/v1/interviews/{started['interview_id']}/answers",
+        json={"turn_id": started["turn_id"], "answer": "Too late."},
+    )
+
+    assert response.status_code == 409
+    turns = (
+        api_session.query(InterviewTurn)
+        .filter_by(interview_id=started["interview_id"])
+        .all()
+    )
+    assert all(turn.answer is None for turn in turns)

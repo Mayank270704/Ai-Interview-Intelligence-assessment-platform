@@ -13,10 +13,13 @@ from sqlalchemy.pool import StaticPool
 from app.ai.question_engine.generator import QuestionGenerator
 from app.ai.resume_intelligence.pdf_processor import PDFExtractionError
 from app.ai.resume_intelligence.processor import ResumeProcessor
+from app.core.security import get_current_user
+from app.db import storage as resume_storage
 from app.db.base import Base
 from app.db.database import get_session
 from app.db.models import Candidate, Resume, ResumeClaim
 from app.db.repositories import resume_repository
+from app.db.supabase_auth import AuthenticatedUser
 from app.main import app
 from app.schemas.question import GeneratedQuestion
 from app.schemas.resume import CandidateIdentity, CandidateProfile, Claim, Skill
@@ -24,6 +27,7 @@ from app.schemas.resume import CandidateIdentity, CandidateProfile, Claim, Skill
 CLAIM_TEXT = "Improved model accuracy by 18%"
 VALID_PDF_HEADER = b"%PDF-1.4\n"
 CORRUPT_PDF = VALID_PDF_HEADER + b"this is not a real xref table or object stream"
+TEST_USER = AuthenticatedUser(id="test-user-1", email="tester@example.com", access_token="test-token")
 
 
 @pytest.fixture
@@ -54,6 +58,7 @@ def client(api_session: Session) -> Iterator[TestClient]:
             raise
 
     app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[get_current_user] = lambda: TEST_USER
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -79,6 +84,7 @@ def _profile() -> CandidateProfile:
 def mocked_processor(monkeypatch):
     process_resume = MagicMock(return_value=_profile())
     monkeypatch.setattr(ResumeProcessor, "process_resume", process_resume)
+    monkeypatch.setattr(resume_storage, "upload_resume_pdf", MagicMock())
     return process_resume
 
 
@@ -237,3 +243,56 @@ def test_uploaded_resume_can_start_an_interview(
     assert body["candidate_id"] == uploaded["candidate_id"]
     assert body["resume_id"] == uploaded["resume_id"]
     assert body["question"]["question"] == "How did you build the sentiment model?"
+
+
+def test_upload_persists_the_storage_path_scoped_to_candidate_and_resume(
+    client: TestClient, api_session: Session, mocked_processor
+):
+    response = _upload(client)
+
+    body = response.json()
+    resume = api_session.query(Resume).filter_by(id=body["resume_id"]).one()
+    assert resume.storage_path == f"{body['candidate_id']}/{body['resume_id']}.pdf"
+
+
+def test_upload_calls_storage_with_the_uploaded_pdf_bytes(client: TestClient, mocked_processor):
+    content = VALID_PDF_HEADER + b"a specific resume body"
+
+    _upload(client, content=content)
+
+    resume_storage.upload_resume_pdf.assert_called_once()
+    args, _ = resume_storage.upload_resume_pdf.call_args
+    assert args[1] == content
+
+
+def test_storage_failure_returns_502_and_persists_nothing(
+    client: TestClient, api_session: Session, monkeypatch, mocked_processor
+):
+    monkeypatch.setattr(
+        resume_storage,
+        "upload_resume_pdf",
+        MagicMock(side_effect=resume_storage.StorageUploadError("upload failed")),
+    )
+
+    response = _upload(client)
+
+    assert response.status_code == 502
+    assert api_session.query(Resume).count() == 0
+    assert api_session.query(Candidate).count() == 0
+
+
+def test_storage_failure_for_an_existing_candidate_creates_no_resume(
+    client: TestClient, api_session: Session, monkeypatch, mocked_processor
+):
+    candidate_id = client.post("/api/v1/candidates", json={"full_name": "Jane Doe"}).json()["id"]
+    monkeypatch.setattr(
+        resume_storage,
+        "upload_resume_pdf",
+        MagicMock(side_effect=resume_storage.StorageUploadError("upload failed")),
+    )
+
+    response = _upload(client, candidate_id=candidate_id)
+
+    assert response.status_code == 502
+    assert api_session.query(Resume).count() == 0
+    assert api_session.query(Candidate).count() == 1

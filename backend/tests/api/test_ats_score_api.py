@@ -10,13 +10,16 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.ai.resume_intelligence.processor import ResumeProcessor
+from app.core.security import get_current_user
 from app.db import storage as resume_storage
 from app.db.base import Base
 from app.db.database import get_session
+from app.db.supabase_auth import AuthenticatedUser
 from app.main import app
 from app.schemas.resume import CandidateIdentity, CandidateProfile, Claim, Experience, Skill
 
 CLAIM_TEXT = "Improved model accuracy by 18%"
+TEST_USER = AuthenticatedUser(id="test-user-1", email="tester@example.com", access_token="test-token")
 
 
 @pytest.fixture
@@ -47,6 +50,7 @@ def client(api_session: Session) -> Iterator[TestClient]:
             raise
 
     app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[get_current_user] = lambda: TEST_USER
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

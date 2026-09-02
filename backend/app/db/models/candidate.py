@@ -19,6 +19,7 @@ class Candidate(Base):
     id: Mapped[str] = id_column()
     full_name: Mapped[Optional[str]] = mapped_column(String(255))
     email: Mapped[Optional[str]] = mapped_column(String(255), index=True)
+    owner_user_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = created_at_column()
 
     resumes: Mapped[list["Resume"]] = relationship(  # noqa: F821

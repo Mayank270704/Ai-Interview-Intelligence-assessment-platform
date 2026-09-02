@@ -145,3 +145,89 @@ export interface InterviewStateResponse {
   knowledge_state: CandidateKnowledgeState;
   turns: InterviewTurn[];
 }
+
+export type InterviewStatus = "created" | "in_progress" | "completed";
+
+/* Authentication */
+
+export interface AuthSession {
+  access_token: string;
+  refresh_token: string;
+  user_id: string;
+  email: string | null;
+}
+
+export interface SignUpResponse {
+  user_id: string;
+  email: string | null;
+  email_confirmation_required: boolean;
+  session: AuthSession | null;
+}
+
+export interface CurrentUser {
+  id: string;
+  email: string | null;
+}
+
+/* ATS resume score */
+
+export type ATSMode = "readiness" | "jd_match";
+
+export interface ATSDiagnostic {
+  type: string;
+  section: string;
+  affected_text: string | null;
+  explanation: string;
+  actionable_fix: string;
+}
+
+export interface ATSScoreResponse {
+  resume_id: string;
+  ats_score: number;
+  mode: ATSMode;
+  matched_keywords: string[];
+  missing_keywords: string[];
+  matched_skills: string[];
+  missing_skills: string[];
+  section_feedback: string[];
+  experience_feedback: string[];
+  project_feedback: string[];
+  measurable_impact_feedback: string[];
+  suggestions: string[];
+  diagnostics: ATSDiagnostic[];
+}
+
+/* Final interview assessment */
+
+export interface FinalAssessment {
+  interview_id: string;
+  overall_score: number;
+  technical_knowledge: number;
+  knowledge_depth: number;
+  problem_solving: number;
+  communication: number;
+  resume_claim_accuracy: number | null;
+  strengths: string[];
+  weaknesses: string[];
+  summary: string;
+  turns_assessed: number;
+  created_at: string | null;
+}
+
+/* Voice and video interview */
+
+export interface QuestionAudioResponse {
+  turn_id: string;
+  audio_base64: string;
+  audio_mime_type: string;
+}
+
+export interface VoiceAnswerResponse extends InterviewAnswerResponse {
+  transcribed_answer: string;
+  next_question_audio_base64: string;
+  next_question_audio_mime_type: string;
+}
+
+export interface VideoAnswerResponse extends InterviewAnswerResponse {
+  transcribed_answer: string;
+}

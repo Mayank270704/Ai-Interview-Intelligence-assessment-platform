@@ -11,9 +11,10 @@ def create_candidate(
     session: Session,
     full_name: str | None = None,
     email: str | None = None,
+    owner_user_id: str | None = None,
 ) -> Candidate:
-    """Create a candidate row."""
-    candidate = Candidate(full_name=full_name, email=email)
+    """Create a candidate row, owned by the authenticated user who created it."""
+    candidate = Candidate(full_name=full_name, email=email, owner_user_id=owner_user_id)
     session.add(candidate)
     session.flush()
     return candidate
