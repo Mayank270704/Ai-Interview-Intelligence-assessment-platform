@@ -1,0 +1,56 @@
+{
+  "target": "label_difficulty_direction",
+  "model": "LogisticRegression(class_weight=balanced) on one-hot + scaled counts",
+  "data_source": "synthetic",
+  "train_size": 1092,
+  "validation_size": 365,
+  "feature_count": 94,
+  "label_order": [
+    "decrease",
+    "maintain",
+    "increase"
+  ],
+  "class_distribution": {
+    "decrease": 229,
+    "maintain": 884,
+    "increase": 344
+  },
+  "model_metrics": {
+    "accuracy": 0.8356,
+    "macro_f1": 0.8166,
+    "balanced_accuracy": 0.8364
+  },
+  "majority_baseline_metrics": {
+    "accuracy": 0.6082,
+    "macro_f1": 0.2521,
+    "balanced_accuracy": 0.3333
+  },
+  "per_class_f1": {
+    "decrease": 0.7627,
+    "maintain": 0.8592,
+    "increase": 0.828
+  },
+  "confusion_matrix": [
+    [
+      45,
+      12,
+      0
+    ],
+    [
+      16,
+      183,
+      23
+    ],
+    [
+      0,
+      9,
+      77
+    ]
+  ],
+  "seed": 20260903,
+  "dataset_digest": "d5c09770dc0487930b998045c408c5a8a5d6a406ea5ec716138d0ac55150fcaa",
+  "notes": [
+    "Synthetic data only. These numbers measure whether the pipeline and feature contract work end to end, not real-world accuracy.",
+    "Not wired into the interview decision path."
+  ]
+}

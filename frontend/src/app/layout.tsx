@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import Link from "next/link";
 
-import HeaderNav from "@/components/HeaderNav";
+import SiteHeader from "@/components/SiteHeader";
 import { AuthProvider } from "@/context/AuthContext";
 
 import "./globals.css";
@@ -10,8 +9,12 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "AI Interview Intelligence",
-  description: "Interview preparation and assessment platform",
+  title: {
+    default: "AI Interview Intelligence",
+    template: "%s · AI Interview Intelligence",
+  },
+  description:
+    "Adaptive AI interviews that analyze your answers, verify resume claims, track your knowledge state, and decide what to ask next.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -19,15 +22,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" className={inter.variable}>
       <body>
         <AuthProvider>
-          <header className="site-header">
-            <div className="site-header-inner">
-              <Link href="/" className="brand">
-                <span className="brand-mark" aria-hidden="true" />
-                AI Interview Intelligence
-              </Link>
-              <HeaderNav />
-            </div>
-          </header>
+          <SiteHeader />
           {children}
         </AuthProvider>
       </body>
