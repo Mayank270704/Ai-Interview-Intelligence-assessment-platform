@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import InterviewerAvatar from "@/components/avatar/InterviewerAvatar";
+import { useAvatar } from "@/hooks/useAvatar";
 import { useMediaRecorder } from "@/hooks/useMediaRecorder";
 import { ApiError } from "@/services/api/client";
 import type {
@@ -54,9 +56,19 @@ export default function MediaInterviewSession({ mode }: { mode: InterviewMode })
   const [ending, setEnding] = useState(false);
   const [completed, setCompleted] = useState(false);
 
+  const [preparingSpeech, setPreparingSpeech] = useState(false);
+
   const recorder = useMediaRecorder(mode === "video");
   const previewRef = useRef<HTMLVideoElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
+
+  const avatar = useAvatar({
+    completed,
+    recording: recorder.status === "recording",
+    submitting: status === "submitting",
+    preparing: status === "loading" || playingQuestion || preparingSpeech,
+  });
+  const audioRef = avatar.audioRef;
 
   const revokeAudioUrl = useCallback(() => {
     if (audioUrlRef.current) {
@@ -101,17 +113,24 @@ export default function MediaInterviewSession({ mode }: { mode: InterviewMode })
 
   const playAudio = useCallback(
     async (base64: string, mimeType: string) => {
+      const element = audioRef.current;
+      if (!element) {
+        return;
+      }
       revokeAudioUrl();
       const url = audioObjectUrl(base64, mimeType);
       audioUrlRef.current = url;
-      const audio = new Audio(url);
-      await audio.play();
+      // One long-lived element, reused for every question: a media element can
+      // only ever back one Web Audio source node, which is what drives the
+      // avatar's mouth.
+      element.src = url;
+      await element.play();
     },
     [revokeAudioUrl]
   );
 
   const handlePlayQuestion = async () => {
-    if (!interviewId || playingQuestion) {
+    if (!interviewId || playingQuestion || avatar.speaking) {
       return;
     }
     setPlayingQuestion(true);
@@ -162,10 +181,15 @@ export default function MediaInterviewSession({ mode }: { mode: InterviewMode })
         const result = await submitVoiceAnswer(interviewId, turnId, blob);
         applyAnswerResult(result);
         if (result.next_question_audio_base64 && result.next_question_audio_mime_type) {
+          // Held across the hand-off so the avatar keeps thinking rather than
+          // flashing idle between the answer landing and the audio starting.
+          setPreparingSpeech(true);
           try {
             await playAudio(result.next_question_audio_base64, result.next_question_audio_mime_type);
           } catch {
             // Autoplay can be blocked until the user interacts; the Play button still works.
+          } finally {
+            setPreparingSpeech(false);
           }
         }
       }
@@ -235,6 +259,18 @@ export default function MediaInterviewSession({ mode }: { mode: InterviewMode })
         </p>
       )}
 
+      <div className={`interview-stage${mode === "video" && recorder.stream ? "" : " solo"}`}>
+        <InterviewerAvatar state={avatar.state} label={avatar.label} rootRef={avatar.avatarRef} />
+        {mode === "video" && recorder.stream && (
+          <video className="media-preview" ref={previewRef} autoPlay muted playsInline />
+        )}
+      </div>
+
+      {/* One reused element for every spoken question: the avatar's mouth is
+          driven by a Web Audio node attached to it, and that can only be
+          created once per element. */}
+      <audio ref={avatar.registerAudio} hidden />
+
       {completed && (
         <div className="card">
           <p>
@@ -252,17 +288,17 @@ export default function MediaInterviewSession({ mode }: { mode: InterviewMode })
               type="button"
               className="button secondary"
               onClick={handlePlayQuestion}
-              disabled={playingQuestion || busy || recording}
+              disabled={playingQuestion || busy || recording || avatar.speaking}
             >
               {playingQuestion && <span className="spinner" aria-hidden="true" />}
-              {playingQuestion ? "Loading audio…" : "Play question"}
+              {playingQuestion
+                ? "Loading audio…"
+                : avatar.speaking
+                  ? "Speaking…"
+                  : "Play question"}
             </button>
           </div>
         </div>
-      )}
-
-      {mode === "video" && recorder.stream && (
-        <video className="media-preview" ref={previewRef} autoPlay muted playsInline />
       )}
 
       {recording && (
