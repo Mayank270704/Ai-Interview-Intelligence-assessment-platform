@@ -97,14 +97,21 @@ def upload_resume(
             status_code=502, detail="Failed to store the uploaded resume file"
         ) from exc
 
-    resume = resume_repository.create_resume(
-        session,
-        candidate_id,
-        profile,
-        resume_id=resume_id,
-        storage_path=storage_path,
-    )
-    stored_profile = resume_repository.load_candidate_profile(session, resume.id)
+    # The PDF is in the bucket from here on, but the row that references it is
+    # still uncommitted. If persisting fails, the request transaction rolls back
+    # and nothing would point at the object, so remove it rather than orphan it.
+    try:
+        resume = resume_repository.create_resume(
+            session,
+            candidate_id,
+            profile,
+            resume_id=resume_id,
+            storage_path=storage_path,
+        )
+        stored_profile = resume_repository.load_candidate_profile(session, resume.id)
+    except Exception:
+        resume_storage.delete_resume_pdf(storage_path)
+        raise
 
     return ResumeUploadResponse(
         resume_id=resume.id,

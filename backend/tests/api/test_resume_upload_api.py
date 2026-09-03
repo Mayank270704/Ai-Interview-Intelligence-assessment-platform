@@ -296,3 +296,78 @@ def test_storage_failure_for_an_existing_candidate_creates_no_resume(
     assert response.status_code == 502
     assert api_session.query(Resume).count() == 0
     assert api_session.query(Candidate).count() == 1
+
+
+# ---------------------------------------------------------------------------
+# Compensating cleanup: a PDF reaches Storage before the row that references it
+# is committed, so a persistence failure must not leave the object orphaned.
+# ---------------------------------------------------------------------------
+
+
+def test_persistence_failure_removes_the_uploaded_object(
+    client: TestClient, api_session: Session, monkeypatch, mocked_processor
+):
+    monkeypatch.setattr(resume_storage, "upload_resume_pdf", MagicMock(return_value=None))
+    delete = MagicMock(return_value=True)
+    monkeypatch.setattr(resume_storage, "delete_resume_pdf", delete)
+    monkeypatch.setattr(
+        resume_repository,
+        "create_resume",
+        MagicMock(side_effect=SQLAlchemyError("connection lost")),
+    )
+
+    response = _upload(client)
+
+    assert response.status_code == 503
+    assert api_session.query(Resume).count() == 0
+    delete.assert_called_once()
+    # The object removed is exactly the one that was uploaded for this request.
+    assert delete.call_args.args[0].endswith(".pdf")
+
+
+def test_cleanup_targets_the_same_path_that_was_uploaded(
+    client: TestClient, monkeypatch, mocked_processor
+):
+    upload = MagicMock(return_value=None)
+    delete = MagicMock(return_value=True)
+    monkeypatch.setattr(resume_storage, "upload_resume_pdf", upload)
+    monkeypatch.setattr(resume_storage, "delete_resume_pdf", delete)
+    monkeypatch.setattr(
+        resume_repository,
+        "create_resume",
+        MagicMock(side_effect=SQLAlchemyError("connection lost")),
+    )
+
+    _upload(client)
+
+    assert delete.call_args.args[0] == upload.call_args.args[0]
+
+
+def test_cleanup_failure_does_not_mask_the_original_error(
+    client: TestClient, monkeypatch, mocked_processor
+):
+    """A failed cleanup must surface the persistence error, not a cleanup error."""
+    monkeypatch.setattr(resume_storage, "upload_resume_pdf", MagicMock(return_value=None))
+    monkeypatch.setattr(resume_storage, "delete_resume_pdf", MagicMock(return_value=False))
+    monkeypatch.setattr(
+        resume_repository,
+        "create_resume",
+        MagicMock(side_effect=SQLAlchemyError("connection lost")),
+    )
+
+    response = _upload(client)
+
+    assert response.status_code == 503
+
+
+def test_successful_upload_never_deletes_the_stored_object(
+    client: TestClient, monkeypatch, mocked_processor
+):
+    monkeypatch.setattr(resume_storage, "upload_resume_pdf", MagicMock(return_value=None))
+    delete = MagicMock(return_value=True)
+    monkeypatch.setattr(resume_storage, "delete_resume_pdf", delete)
+
+    response = _upload(client)
+
+    assert response.status_code == 200
+    delete.assert_not_called()
