@@ -8,3 +8,8 @@ __pycache__/
 *.db
 .pytest_cache/
 *.tsbuildinfo
+
+# Reproducible ML experiment outputs (regenerate with ai-lab/experiments/*)
+ai-lab/datasets/*.jsonl
+ai-lab/evaluation/*.json
+ai-lab/models/*.joblib

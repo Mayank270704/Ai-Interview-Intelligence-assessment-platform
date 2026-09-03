@@ -23,9 +23,11 @@ def create_candidate(
         full_name=request.full_name,
         email=request.email,
         owner_user_id=current_user.id,
+        ml_training_consent=request.ml_training_consent,
     )
     return CandidateRead(
         id=candidate.id,
         full_name=candidate.full_name,
         email=candidate.email,
+        ml_training_consent=candidate.ml_training_consent,
     )

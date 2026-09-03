@@ -12,9 +12,15 @@ def create_candidate(
     full_name: str | None = None,
     email: str | None = None,
     owner_user_id: str | None = None,
+    ml_training_consent: bool = False,
 ) -> Candidate:
     """Create a candidate row, owned by the authenticated user who created it."""
-    candidate = Candidate(full_name=full_name, email=email, owner_user_id=owner_user_id)
+    candidate = Candidate(
+        full_name=full_name,
+        email=email,
+        owner_user_id=owner_user_id,
+        ml_training_consent=ml_training_consent,
+    )
     session.add(candidate)
     session.flush()
     return candidate

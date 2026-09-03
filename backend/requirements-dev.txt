@@ -1,0 +1,7 @@
+# Test and offline-experimentation dependencies.
+#
+# Kept separate from requirements.txt so the API image does not ship an ML stack
+# it never imports: app.ml.baseline imports scikit-learn lazily, inside the
+# functions, and nothing in the request path imports that module at all.
+-r requirements.txt
+scikit-learn>=1.5.0,<2.0.0

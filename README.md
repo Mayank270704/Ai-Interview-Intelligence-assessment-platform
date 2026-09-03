@@ -41,6 +41,7 @@ The frontend runs on port 3000 and the API runs on port 8000 by default.
 
 ```powershell
 cd backend
+pip install -r requirements-dev.txt   # runtime deps plus scikit-learn, used by the offline ML tests
 python -m pytest -q
 ```
 
@@ -50,3 +51,19 @@ The one live check that calls the real Gemini API is opt-in:
 ```powershell
 $env:RUN_LIVE_LLM_TESTS = "1"; python -m pytest tests/ai/test_llm.py
 ```
+
+## Offline ML experiments
+
+`backend/app/ml` defines a training-data contract over the structured signals the
+interview pipeline already produces, and `ai-lab/experiments/adaptive_interview`
+trains an offline baseline on synthetic scenarios:
+
+```powershell
+python ai-lab/experiments/adaptive_interview/train_baseline.py
+```
+
+This is research scaffolding, not a product feature. No model runs in the
+interview path, no API response is derived from one, and real interview turns
+become training data only for candidates who explicitly opted in. See
+`ai-lab/experiments/adaptive_interview/README.md` for the target, features,
+metrics, and what the synthetic numbers do and do not mean.
