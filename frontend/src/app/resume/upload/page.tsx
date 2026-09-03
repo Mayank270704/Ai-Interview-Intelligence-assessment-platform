@@ -82,7 +82,7 @@ function ResumeUpload() {
         </p>
       )}
 
-      {status === "error" && errorMessage && <div className="error-banner">{errorMessage}</div>}
+      {status === "error" && errorMessage && <div className="error-banner" role="alert">{errorMessage}</div>}
 
       {status === "done" && profile && (
         <div className="card">

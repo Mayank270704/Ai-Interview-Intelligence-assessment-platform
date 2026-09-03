@@ -31,6 +31,22 @@ export function setAccessToken(token: string | null): void {
   }
 }
 
+let unauthorizedHandler: (() => void) | null = null;
+
+/**
+ * Register what should happen when the API rejects a stored token mid-session.
+ * Without this a session that expired while the tab was open keeps rendering as
+ * signed in, and every request fails with an error the user cannot act on.
+ */
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
+
+/** The credential endpoints answer 401 for bad credentials, not an expired session. */
+function isCredentialEndpoint(path: string): boolean {
+  return path.startsWith("/auth/login") || path.startsWith("/auth/signup");
+}
+
 export function getAccessToken(): string | null {
   if (accessToken !== null) {
     return accessToken;
@@ -89,6 +105,10 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
 
   if (!response.ok) {
     const detail = await readErrorDetail(response);
+    if (response.status === 401 && !isCredentialEndpoint(path)) {
+      setAccessToken(null);
+      unauthorizedHandler?.();
+    }
     throw new ApiError(response.status, friendlyMessage(response.status, detail));
   }
 

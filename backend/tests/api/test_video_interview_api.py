@@ -263,6 +263,19 @@ def test_video_answer_transcription_failure_returns_502(client: TestClient, mock
     assert response.status_code == 502
 
 
+def test_video_answer_with_blank_transcript_returns_422_and_keeps_the_turn(
+    client: TestClient, mocked_ai, mocked_voice
+):
+    started = _start_interview(client)
+    mocked_voice["transcribe"].return_value = ""
+
+    response = _video_answer(client, started["interview_id"], started["turn_id"])
+
+    assert response.status_code == 422
+    state = client.get(f"/api/v1/interviews/{started['interview_id']}").json()
+    assert [turn["answer"] for turn in state["turns"]] == [None]
+
+
 def test_video_answer_on_completed_interview_returns_409(client: TestClient, mocked_ai, mocked_voice):
     started = _start_interview(client)
     client.post(f"/api/v1/interviews/{started['interview_id']}/complete")

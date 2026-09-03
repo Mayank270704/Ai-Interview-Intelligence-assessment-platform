@@ -236,24 +236,36 @@ def test_cors_origins_are_configurable_and_not_a_wildcard():
 # ---------------------------------------------------------------------------
 
 
+def dep_names(dependencies, out: list[str]) -> None:
+    """Collect dependency callable names depth-first, in resolution order."""
+    for dependency in dependencies:
+        if dependency.call is not None:
+            out.append(getattr(dependency.call, "__name__", type(dependency.call).__name__))
+        dep_names(dependency.dependencies, out)
+
+
+def endpoints_under_test():
+    """Every route with a dependency tree, flattening FastAPI's nested routers.
+
+    FastAPI >=0.141 keeps included routers nested instead of flattening their
+    routes onto the app, so expand them when the app exposes them.
+    """
+    for route in app.routes:
+        expand = getattr(route, "effective_candidates", None)
+        for candidate in expand() if expand is not None else [route]:
+            if getattr(candidate, "dependant", None) is not None:
+                yield candidate
+
+
 def _route_auth_map() -> dict[tuple[str, str], bool]:
     """Map (method, path) -> whether the route requires an authenticated user."""
-
-    def dep_names(dependencies, out: list[str]) -> None:
-        for dependency in dependencies:
-            if dependency.call is not None:
-                out.append(getattr(dependency.call, "__name__", type(dependency.call).__name__))
-            dep_names(dependency.dependencies, out)
-
     routes: dict[tuple[str, str], bool] = {}
-    for route in app.routes:
+    for route in endpoints_under_test():
         path = getattr(route, "path", "")
         if not path.startswith("/api/"):
             continue
         names: list[str] = []
-        dependant = getattr(route, "dependant", None)
-        if dependant is not None:
-            dep_names(dependant.dependencies, names)
+        dep_names(route.dependant.dependencies, names)
         for method in set(getattr(route, "methods", [])) - {"HEAD", "OPTIONS"}:
             routes[(method, path)] = "get_current_user" in names
     return routes
@@ -275,6 +287,28 @@ def test_only_health_and_credential_endpoints_are_public():
         f"{sorted(actual_public - expected_public)}; "
         f"unexpectedly protected: {sorted(expected_public - actual_public)}"
     )
+
+
+def test_authentication_is_resolved_before_the_database_session():
+    """An unauthenticated request must be rejected without opening a transaction.
+
+    FastAPI resolves a route's dependencies in signature order, so get_current_user
+    has to come first -- otherwise anonymous traffic opens a database session (and
+    a 401 turns into a 500 whenever the database is unreachable).
+    """
+    offenders = []
+    for route in endpoints_under_test():
+        path = getattr(route, "path", "")
+        if not path.startswith("/api/"):
+            continue
+        names: list[str] = []
+        dep_names(route.dependant.dependencies, names)
+        if "get_current_user" not in names or "get_session" not in names:
+            continue
+        if names.index("get_session") < names.index("get_current_user"):
+            offenders.append(path)
+
+    assert offenders == [], f"database session resolved before authentication on: {offenders}"
 
 
 def test_every_interview_and_resume_route_is_protected():

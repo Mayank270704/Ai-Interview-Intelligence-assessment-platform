@@ -45,6 +45,11 @@ def ensure_owner(owner_user_id: str | None, current_user: AuthenticatedUser) -> 
     """Enforce that the current user owns a resource, without revealing whether a
     resource merely owned by someone else exists (returns 404, not 403, on mismatch
     -- an ID belonging to another user should look identical to a nonexistent ID).
+
+    An unowned resource (a legacy row predating candidate ownership) belongs to
+    nobody and is never matchable, so an absent owner is rejected outright rather
+    than compared -- otherwise an identity that somehow carried an empty id would
+    match every one of those rows.
     """
-    if owner_user_id != current_user.id:
+    if not owner_user_id or not current_user.id or owner_user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Resource not found")

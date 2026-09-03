@@ -1,7 +1,41 @@
 """Tests for LLM configuration."""
 
+import importlib
+
 import pytest
 from unittest.mock import patch
+
+import app.core.config as config_module
+
+
+@pytest.fixture(autouse=True)
+def restore_config():
+    """Reload the real config afterwards.
+
+    Every test here reloads app.core.config against a doctored environment, and
+    the reloaded module stays in sys.modules for the rest of the session.
+    """
+    yield
+    importlib.reload(config_module)
+
+
+@pytest.fixture
+def isolated_env(monkeypatch):
+    """Reload config against an environment containing only the given variables.
+
+    config calls load_dotenv() on import, which would otherwise repopulate the
+    real .env values into the cleared environment and make these assertions
+    vacuous. The reload re-executes `from dotenv import load_dotenv`, so the
+    stub has to be installed on dotenv itself rather than on config.
+    """
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *args, **kwargs: False)
+
+    def reload_with(**env):
+        with patch.dict("os.environ", env, clear=True):
+            importlib.reload(config_module)
+        return config_module
+
+    return reload_with
 
 
 def test_config_loads_defaults():
@@ -13,10 +47,6 @@ def test_config_loads_defaults():
         },
         clear=False,
     ):
-        # Re-import to get fresh config with test env vars
-        import importlib
-        import app.core.config as config_module
-
         importlib.reload(config_module)
 
         assert config_module.LLM_PROVIDER == "gemini"
@@ -24,29 +54,26 @@ def test_config_loads_defaults():
         assert config_module.GEMINI_MODEL is not None
 
 
-def test_config_import_does_not_require_gemini_key():
+def test_config_import_does_not_require_gemini_key(isolated_env):
     """Database tooling can import config without unrelated LLM secrets."""
-    with patch.dict("os.environ", {"LLM_PROVIDER": "gemini"}, clear=True):
-        import importlib
-        import app.core.config as config_module
+    config = isolated_env(LLM_PROVIDER="gemini")
 
-        importlib.reload(config_module)
-        config_module.GEMINI_API_KEY = None
-
-        assert config_module.GEMINI_API_KEY is None
+    assert config.GEMINI_API_KEY is None
+    assert config.LLM_PROVIDER == "gemini"
 
 
-def test_llm_validation_still_requires_gemini_key():
+def test_llm_validation_still_requires_gemini_key(isolated_env):
     """Application LLM usage should still validate provider configuration."""
-    with patch.dict("os.environ", {"LLM_PROVIDER": "gemini"}, clear=True):
-        import importlib
-        import app.core.config as config_module
+    config = isolated_env(LLM_PROVIDER="gemini")
 
-        importlib.reload(config_module)
-        config_module.GEMINI_API_KEY = None
+    with pytest.raises(ValueError, match="GEMINI_API_KEY"):
+        config.validate_llm_config()
 
-        with pytest.raises(ValueError, match="GEMINI_API_KEY"):
-            config_module.validate_llm_config()
+
+def test_llm_validation_passes_when_gemini_key_is_present(isolated_env):
+    config = isolated_env(LLM_PROVIDER="gemini", GEMINI_API_KEY="test-key")
+
+    config.validate_llm_config()
 
 
 def test_config_loads_custom_provider():
@@ -60,9 +87,6 @@ def test_config_loads_custom_provider():
         },
         clear=False,
     ):
-        import importlib
-        import app.core.config as config_module
-
         importlib.reload(config_module)
 
         assert config_module.LLM_PROVIDER == "gemini"
@@ -79,9 +103,6 @@ def test_config_provider_case_insensitive():
         },
         clear=False,
     ):
-        import importlib
-        import app.core.config as config_module
-
         importlib.reload(config_module)
 
         assert config_module.LLM_PROVIDER == "gemini"
@@ -97,9 +118,6 @@ def test_config_default_gemini_model():
         },
         clear=False,
     ):
-        import importlib
-        import app.core.config as config_module
-
         importlib.reload(config_module)
 
         # Should have a default model

@@ -26,7 +26,27 @@ cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+copy .env.example .env   # then fill in DATABASE_URL, GEMINI_API_KEY, and the SUPABASE_* values
+alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
+The API will not start requests successfully without `DATABASE_URL`, and question
+generation, answer analysis, and voice need `GEMINI_API_KEY`. See `backend/.env.example`
+for what each setting is for. Never commit a filled-in `.env`.
+
 The frontend runs on port 3000 and the API runs on port 8000 by default.
+
+## Tests
+
+```powershell
+cd backend
+python -m pytest -q
+```
+
+The suite is deterministic: Gemini, Supabase Auth, and Supabase Storage are all mocked.
+The one live check that calls the real Gemini API is opt-in:
+
+```powershell
+$env:RUN_LIVE_LLM_TESTS = "1"; python -m pytest tests/ai/test_llm.py
+```

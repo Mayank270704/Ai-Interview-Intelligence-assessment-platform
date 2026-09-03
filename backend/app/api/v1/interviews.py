@@ -75,6 +75,20 @@ def _base_mime_type(content_type: str | None) -> str:
     return (content_type or "").split(";")[0].strip().lower()
 
 
+def _require_transcript(transcript: str, interview_id: str) -> str:
+    """Reject a blank transcript before it reaches the interview pipeline.
+
+    The provider interface only promises a string, so an empty transcript is
+    rejected here rather than being analyzed and scored as a real answer.
+    """
+    if not transcript.strip():
+        logger.info("Transcription produced no speech for interview %s", interview_id)
+        raise HTTPException(
+            status_code=422, detail="No speech was detected in the recording"
+        )
+    return transcript
+
+
 def _execute_answer_turn(
     session: Session,
     interview: Interview,
@@ -132,8 +146,8 @@ def _execute_answer_turn(
 @router.post("", response_model=InterviewQuestionResponse)
 def start_interview(
     request: InterviewStartRequest,
-    session: Session = Depends(get_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ) -> InterviewQuestionResponse:
     candidate_id = request.candidate_id
     resume_id = request.resume_id
@@ -215,8 +229,8 @@ def start_interview(
 def submit_answer(
     interview_id: str,
     request: InterviewAnswerRequest,
-    session: Session = Depends(get_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ) -> InterviewAnswerResponse:
     interview = interview_repository.get_interview(session, interview_id)
     if interview is None:
@@ -247,8 +261,8 @@ def submit_answer(
 @router.get("/{interview_id}/question-audio", response_model=QuestionAudioResponse)
 def get_question_audio(
     interview_id: str,
-    session: Session = Depends(get_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ) -> QuestionAudioResponse:
     interview = interview_repository.get_interview(session, interview_id)
     if interview is None:
@@ -279,8 +293,8 @@ def submit_voice_answer(
     interview_id: str,
     turn_id: str = Form(...),
     file: UploadFile = File(...),
-    session: Session = Depends(get_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ) -> VoiceAnswerResponse:
     interview = interview_repository.get_interview(session, interview_id)
     if interview is None:
@@ -305,15 +319,20 @@ def submit_voice_answer(
             status_code=502, detail="Failed to transcribe the recorded answer"
         ) from exc
 
+    _require_transcript(transcribed_answer, interview_id)
+
     service, question = _execute_answer_turn(session, interview, turn_id, transcribed_answer)
 
+    # The answer is evaluated and persisted by this point. Raising here would roll
+    # the whole turn back and discard it, so a synthesis failure degrades to a
+    # text-only next question instead.
+    next_audio_base64: str | None = None
+    next_audio_mime: str | None = None
     try:
         next_audio_bytes, next_audio_mime = voice_client.synthesize(question.question)
+        next_audio_base64 = base64.b64encode(next_audio_bytes).decode("ascii")
     except (ValueError, RuntimeError) as exc:
         logger.warning("Speech synthesis failed for interview %s: %s", interview_id, exc)
-        raise HTTPException(
-            status_code=502, detail="Failed to generate audio for the next question"
-        ) from exc
 
     return VoiceAnswerResponse(
         interview_id=interview.id,
@@ -332,7 +351,7 @@ def submit_voice_answer(
         status=interview.status,
         knowledge_state=service.knowledge_state,
         transcribed_answer=transcribed_answer,
-        next_question_audio_base64=base64.b64encode(next_audio_bytes).decode("ascii"),
+        next_question_audio_base64=next_audio_base64,
         next_question_audio_mime_type=next_audio_mime,
     )
 
@@ -342,8 +361,8 @@ def submit_video_answer(
     interview_id: str,
     turn_id: str = Form(...),
     file: UploadFile = File(...),
-    session: Session = Depends(get_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ) -> VideoAnswerResponse:
     """Transcribe a candidate's video answer and run it through the shared pipeline.
 
@@ -374,6 +393,8 @@ def submit_video_answer(
             status_code=502, detail="Failed to transcribe the recorded answer"
         ) from exc
 
+    _require_transcript(transcribed_answer, interview_id)
+
     service, question = _execute_answer_turn(session, interview, turn_id, transcribed_answer)
 
     return VideoAnswerResponse(
@@ -399,8 +420,8 @@ def submit_video_answer(
 @router.post("/{interview_id}/complete", response_model=InterviewStateResponse)
 def complete_interview(
     interview_id: str,
-    session: Session = Depends(get_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ) -> InterviewStateResponse:
     interview = interview_repository.get_interview(session, interview_id)
     if interview is None:
@@ -431,8 +452,8 @@ def complete_interview(
 @router.post("/{interview_id}/assessment", response_model=FinalAssessment)
 def create_final_assessment(
     interview_id: str,
-    session: Session = Depends(get_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ) -> FinalAssessment:
     interview = interview_repository.get_interview(session, interview_id)
     if interview is None:
@@ -462,8 +483,8 @@ def create_final_assessment(
 @router.get("/{interview_id}/assessment", response_model=FinalAssessment)
 def get_final_assessment(
     interview_id: str,
-    session: Session = Depends(get_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ) -> FinalAssessment:
     interview = interview_repository.get_interview(session, interview_id)
     if interview is None:
@@ -481,8 +502,8 @@ def get_final_assessment(
 @router.get("/{interview_id}", response_model=InterviewStateResponse)
 def get_interview(
     interview_id: str,
-    session: Session = Depends(get_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ) -> InterviewStateResponse:
     interview = interview_repository.get_interview(session, interview_id)
     if interview is None:

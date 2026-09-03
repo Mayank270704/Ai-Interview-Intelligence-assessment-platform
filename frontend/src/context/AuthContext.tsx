@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
-import { getAccessToken, setAccessToken } from "@/services/api/client";
+import { getAccessToken, setAccessToken, setUnauthorizedHandler } from "@/services/api/client";
 import type { CurrentUser } from "@/services/api/types";
 import * as authService from "@/services/auth";
 
@@ -55,6 +55,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    // A token can expire while the tab is open; drop back to anonymous so the
+    // route guards send the user to log in instead of looping on failed calls.
+    setUnauthorizedHandler(() => {
+      setUser(null);
+      setStatus("anonymous");
+    });
+    return () => setUnauthorizedHandler(null);
   }, []);
 
   const signUp = useCallback(async (email: string, password: string): Promise<SignUpOutcome> => {

@@ -101,9 +101,9 @@ export default function SignupPage() {
         <p className="progress-label">At least {MIN_PASSWORD_LENGTH} characters.</p>
 
         {passwordTooShort && (
-          <div className="error-banner">Your password must be at least {MIN_PASSWORD_LENGTH} characters.</div>
+          <div className="error-banner" role="alert">Your password must be at least {MIN_PASSWORD_LENGTH} characters.</div>
         )}
-        {errorMessage && <div className="error-banner">{errorMessage}</div>}
+        {errorMessage && <div className="error-banner" role="alert">{errorMessage}</div>}
 
         <div className="actions">
           <button

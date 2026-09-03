@@ -135,18 +135,19 @@ export interface CandidateKnowledgeState {
   summary: string;
 }
 
+export type InterviewStatus = "created" | "in_progress" | "completed";
+
 export interface InterviewStateResponse {
   interview_id: string;
   candidate_id: string;
   resume_id: string | null;
   objective: string;
   difficulty: QuestionDifficulty;
+  status: InterviewStatus;
   current_question: GeneratedQuestion | null;
   knowledge_state: CandidateKnowledgeState;
   turns: InterviewTurn[];
 }
-
-export type InterviewStatus = "created" | "in_progress" | "completed";
 
 /* Authentication */
 
@@ -224,8 +225,9 @@ export interface QuestionAudioResponse {
 
 export interface VoiceAnswerResponse extends InterviewAnswerResponse {
   transcribed_answer: string;
-  next_question_audio_base64: string;
-  next_question_audio_mime_type: string;
+  /** Null when speech synthesis failed; the answer itself was still recorded. */
+  next_question_audio_base64: string | null;
+  next_question_audio_mime_type: string | null;
 }
 
 export interface VideoAnswerResponse extends InterviewAnswerResponse {

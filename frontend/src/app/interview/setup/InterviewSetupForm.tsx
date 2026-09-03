@@ -23,7 +23,7 @@ export default function InterviewSetupForm() {
     return (
       <main className="narrow">
         <h1>Interview setup</h1>
-        <div className="error-banner">No resume was found for this session. Please upload your resume again.</div>
+        <div className="error-banner" role="alert">No resume was found for this session. Please upload your resume again.</div>
       </main>
     );
   }
@@ -98,7 +98,7 @@ export default function InterviewSetupForm() {
           <option value="video">Video — record yourself answering</option>
         </select>
 
-        {errorMessage && <div className="error-banner">{errorMessage}</div>}
+        {errorMessage && <div className="error-banner" role="alert">{errorMessage}</div>}
 
         <div className="actions">
           <button type="submit" className="button" disabled={submitting || !objective.trim()}>

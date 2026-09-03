@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -51,6 +52,7 @@ export default function MediaInterviewSession({ mode }: { mode: InterviewMode })
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [playingQuestion, setPlayingQuestion] = useState(false);
   const [ending, setEnding] = useState(false);
+  const [completed, setCompleted] = useState(false);
 
   const recorder = useMediaRecorder(mode === "video");
   const previewRef = useRef<HTMLVideoElement | null>(null);
@@ -84,6 +86,7 @@ export default function MediaInterviewSession({ mode }: { mode: InterviewMode })
       setTurnId(pendingTurn?.id ?? null);
       setTurnNumber(interview.turns.length);
       setDifficulty(interview.difficulty);
+      setCompleted(interview.status === "completed");
       setStatus("ready");
     } catch (error) {
       const isNotFound = error instanceof ApiError && error.status === 404;
@@ -158,10 +161,12 @@ export default function MediaInterviewSession({ mode }: { mode: InterviewMode })
       } else {
         const result = await submitVoiceAnswer(interviewId, turnId, blob);
         applyAnswerResult(result);
-        try {
-          await playAudio(result.next_question_audio_base64, result.next_question_audio_mime_type);
-        } catch {
-          // Autoplay can be blocked until the user interacts; the Play button still works.
+        if (result.next_question_audio_base64 && result.next_question_audio_mime_type) {
+          try {
+            await playAudio(result.next_question_audio_base64, result.next_question_audio_mime_type);
+          } catch {
+            // Autoplay can be blocked until the user interacts; the Play button still works.
+          }
         }
       }
     } catch (error) {
@@ -187,7 +192,7 @@ export default function MediaInterviewSession({ mode }: { mode: InterviewMode })
     return (
       <main className="narrow">
         <h1>{copy.title}</h1>
-        <div className="error-banner">No interview was specified.</div>
+        <div className="error-banner" role="alert">No interview was specified.</div>
       </main>
     );
   }
@@ -196,7 +201,7 @@ export default function MediaInterviewSession({ mode }: { mode: InterviewMode })
     return (
       <main className="narrow">
         <h1>Interview not found</h1>
-        <div className="error-banner">
+        <div className="error-banner" role="alert">
           This interview could not be found. It may have expired or the link is invalid.
         </div>
       </main>
@@ -218,6 +223,7 @@ export default function MediaInterviewSession({ mode }: { mode: InterviewMode })
   const recording = recorder.status === "recording";
   const submitting = status === "submitting";
   const busy = submitting || ending;
+  const canAnswer = Boolean(question) && Boolean(turnId) && !completed;
 
   return (
     <main className="narrow">
@@ -229,7 +235,16 @@ export default function MediaInterviewSession({ mode }: { mode: InterviewMode })
         </p>
       )}
 
-      {question && (
+      {completed && (
+        <div className="card">
+          <p>
+            This interview is complete. Your results are ready.{" "}
+            <Link href={`/results?interviewId=${interviewId}`}>View results</Link>
+          </p>
+        </div>
+      )}
+
+      {question && !completed && (
         <div className="card question-card">
           <p className="question-text">{question.question}</p>
           <div className="actions">
@@ -271,7 +286,7 @@ export default function MediaInterviewSession({ mode }: { mode: InterviewMode })
       )}
 
       {(errorMessage || recorder.errorMessage) && (
-        <div className="error-banner">
+        <div className="error-banner" role="alert">
           {errorMessage ?? recorder.errorMessage}
           {status === "error" && (
             <>
@@ -294,13 +309,13 @@ export default function MediaInterviewSession({ mode }: { mode: InterviewMode })
             type="button"
             className="button"
             onClick={handleStartRecording}
-            disabled={busy || !question || !turnId}
+            disabled={busy || !canAnswer}
           >
             {copy.recordLabel}
           </button>
         )}
         <button type="button" className="button secondary" onClick={handleEndInterview} disabled={busy || recording}>
-          {ending ? "Finishing…" : "End Interview"}
+          {ending ? "Finishing…" : completed ? "View results" : "End Interview"}
         </button>
       </div>
     </main>

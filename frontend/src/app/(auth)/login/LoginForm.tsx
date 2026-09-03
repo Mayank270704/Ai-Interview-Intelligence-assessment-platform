@@ -77,7 +77,7 @@ export default function LoginForm() {
           required
         />
 
-        {errorMessage && <div className="error-banner">{errorMessage}</div>}
+        {errorMessage && <div className="error-banner" role="alert">{errorMessage}</div>}
 
         <div className="actions">
           <button type="submit" className="button" disabled={submitting || !email.trim() || !password}>

@@ -325,13 +325,40 @@ def test_voice_answer_transcription_failure_returns_502(client: TestClient, mock
     assert response.status_code == 502
 
 
-def test_voice_answer_synthesis_failure_returns_502(client: TestClient, mocked_ai, mocked_voice):
+def test_voice_answer_survives_synthesis_failure_without_losing_the_answer(
+    client: TestClient, mocked_ai, mocked_voice
+):
+    """A TTS failure must not roll back an answer that was already evaluated."""
     started = _start_interview(client)
     mocked_voice["synthesize"].side_effect = RuntimeError("Gemini speech synthesis failed: quota exceeded")
 
     response = _voice_answer(client, started["interview_id"], started["turn_id"])
 
-    assert response.status_code == 502
+    assert response.status_code == 200
+    body = response.json()
+    assert body["next_question_audio_base64"] is None
+    assert body["next_question_audio_mime_type"] is None
+    assert body["next_question"]["question"] == "Which tokenizer did you use?"
+    assert body["answered_turn"]["answer"] == "I fine-tuned BERT on the dataset."
+
+    state = client.get(f"/api/v1/interviews/{started['interview_id']}").json()
+    answered = [turn for turn in state["turns"] if turn["answer"] is not None]
+    assert [turn["answer"] for turn in answered] == ["I fine-tuned BERT on the dataset."]
+    assert answered[0]["evaluation"] is not None
+    assert state["current_question"]["question"] == "Which tokenizer did you use?"
+
+
+def test_voice_answer_with_blank_transcript_returns_422_and_keeps_the_turn(
+    client: TestClient, mocked_ai, mocked_voice
+):
+    started = _start_interview(client)
+    mocked_voice["transcribe"].return_value = "   "
+
+    response = _voice_answer(client, started["interview_id"], started["turn_id"])
+
+    assert response.status_code == 422
+    state = client.get(f"/api/v1/interviews/{started['interview_id']}").json()
+    assert [turn["answer"] for turn in state["turns"]] == [None]
 
 
 def test_voice_answer_on_completed_interview_returns_409(client: TestClient, mocked_ai, mocked_voice):

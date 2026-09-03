@@ -28,8 +28,8 @@ PDF_MAGIC_BYTES = b"%PDF-"
 @router.post("", response_model=ResumeCreateResponse)
 def create_resume(
     request: ResumeCreateRequest,
-    session: Session = Depends(get_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ) -> ResumeCreateResponse:
     candidate = candidate_repository.get_candidate(session, request.candidate_id)
     if candidate is None:
@@ -55,8 +55,8 @@ def create_resume(
 def upload_resume(
     file: UploadFile = File(...),
     candidate_id: str | None = Form(None),
-    session: Session = Depends(get_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ) -> ResumeUploadResponse:
     if candidate_id is not None:
         candidate = candidate_repository.get_candidate(session, candidate_id)
@@ -117,8 +117,8 @@ def upload_resume(
 def get_ats_score(
     resume_id: str,
     request: ATSScoreRequest,
-    session: Session = Depends(get_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ) -> ATSScoreResponse:
     resume = resume_repository.get_resume(session, resume_id)
     if resume is None:

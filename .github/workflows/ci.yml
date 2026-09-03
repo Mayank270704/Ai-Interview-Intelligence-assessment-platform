@@ -7,10 +7,34 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      # The suite is deterministic: every LLM, voice, and Supabase call is mocked.
+      # These placeholders only satisfy configuration loading -- no real service is
+      # contacted, and the live Gemini check stays opt-in via RUN_LIVE_LLM_TESTS.
+      LLM_PROVIDER: gemini
+      VOICE_PROVIDER: gemini
+      GEMINI_API_KEY: ci-placeholder-key
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r backend/requirements.txt
-      - run: python -m compileall backend/app
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install
+      - run: npx tsc --noEmit
+      - run: npm run build

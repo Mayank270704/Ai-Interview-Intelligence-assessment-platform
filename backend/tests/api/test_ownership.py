@@ -348,3 +348,47 @@ def test_ownership_propagates_through_the_full_chain(
 
     _as(USER_A)
     assert client.get(f"/api/v1/interviews/{chain['interview_id']}/assessment").status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Legacy rows predating candidate ownership (migration 0005 left owner_user_id NULL)
+# ---------------------------------------------------------------------------
+
+
+def test_unowned_legacy_candidate_is_not_reachable_by_any_user(
+    client: TestClient, api_session: Session, mocked_ai
+):
+    """A row with no owner belongs to nobody, so every identity must get a 404."""
+    from app.db.models import Candidate, Interview, Resume
+
+    chain = _build_chain(client)
+    api_session.get(Candidate, chain["candidate_id"]).owner_user_id = None
+    api_session.commit()
+
+    for user in (USER_A, USER_B):
+        _as(user)
+        assert client.get(f"/api/v1/interviews/{chain['interview_id']}").status_code == 404
+        assert (
+            client.post(
+                f"/api/v1/resumes/{chain['resume_id']}/ats-score",
+                json={"job_description": "Machine learning engineer"},
+            ).status_code
+            == 404
+        )
+
+    assert api_session.get(Resume, chain["resume_id"]) is not None
+    assert api_session.get(Interview, chain["interview_id"]) is not None
+
+
+def test_identity_without_an_id_cannot_claim_unowned_rows(
+    client: TestClient, api_session: Session, mocked_ai
+):
+    """An empty subject id must never match an unowned row's NULL owner."""
+    from app.db.models import Candidate
+
+    chain = _build_chain(client)
+    api_session.get(Candidate, chain["candidate_id"]).owner_user_id = None
+    api_session.commit()
+
+    _as(AuthenticatedUser(id="", email=None, access_token="token-empty"))
+    assert client.get(f"/api/v1/interviews/{chain['interview_id']}").status_code == 404

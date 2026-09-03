@@ -58,7 +58,7 @@ export default function ResumeAnalysis() {
         <div className="page-header">
           <h1>Resume analysis</h1>
         </div>
-        <div className="error-banner">
+        <div className="error-banner" role="alert">
           No resume was specified. Upload a resume first to see its ATS score.
         </div>
         <div className="actions">
@@ -113,7 +113,7 @@ export default function ResumeAnalysis() {
           placeholder="Paste the job description here to score against it…"
         />
 
-        {status === "error" && errorMessage && <div className="error-banner">{errorMessage}</div>}
+        {status === "error" && errorMessage && <div className="error-banner" role="alert">{errorMessage}</div>}
 
         <div className="actions">
           <button type="submit" className="button" disabled={status === "scoring"}>

@@ -75,7 +75,7 @@ export default function ResultsSummary() {
     return (
       <main className="narrow">
         <h1>Interview complete</h1>
-        <div className="error-banner">No interview was specified.</div>
+        <div className="error-banner" role="alert">No interview was specified.</div>
       </main>
     );
   }
@@ -96,7 +96,7 @@ export default function ResultsSummary() {
     return (
       <main className="narrow">
         <h1>Interview not found</h1>
-        <div className="error-banner">This interview could not be found.</div>
+        <div className="error-banner" role="alert">This interview could not be found.</div>
       </main>
     );
   }
@@ -105,7 +105,7 @@ export default function ResultsSummary() {
     return (
       <main className="narrow">
         <h1>Interview complete</h1>
-        <div className="error-banner">{errorMessage ?? "Something went wrong."}</div>
+        <div className="error-banner" role="alert">{errorMessage ?? "Something went wrong."}</div>
       </main>
     );
   }
@@ -155,7 +155,7 @@ export default function ResultsSummary() {
             communication, aggregated from your answers.
           </p>
           {assessmentStatus === "error" && assessmentError && (
-            <div className="error-banner">{assessmentError}</div>
+            <div className="error-banner" role="alert">{assessmentError}</div>
           )}
           <div className="actions">
             <button

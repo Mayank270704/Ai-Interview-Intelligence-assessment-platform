@@ -15,6 +15,7 @@ interface InterviewSessionState {
   turnNumber: number;
   difficulty: QuestionDifficulty | null;
   knowledgeState: CandidateKnowledgeState | null;
+  completed: boolean;
   errorMessage: string | null;
 }
 
@@ -25,6 +26,7 @@ const initialState: InterviewSessionState = {
   turnNumber: 0,
   difficulty: null,
   knowledgeState: null,
+  completed: false,
   errorMessage: null,
 };
 
@@ -46,6 +48,7 @@ export function useInterview(interviewId: string | null) {
         turnNumber: interview.turns.length,
         difficulty: interview.difficulty,
         knowledgeState: interview.knowledge_state,
+        completed: interview.status === "completed",
         errorMessage: null,
       });
     } catch (error) {
@@ -70,15 +73,16 @@ export function useInterview(interviewId: string | null) {
       setState((previous) => ({ ...previous, status: "submitting", errorMessage: null }));
       try {
         const result = await submitAnswer(interviewId, state.turnId, answerText);
-        setState({
+        setState((previous) => ({
           status: "ready",
           question: result.next_question,
           turnId: result.next_turn_id,
           turnNumber: result.answered_turn.turn_number + 1,
           difficulty: result.difficulty,
           knowledgeState: result.knowledge_state,
+          completed: previous.completed,
           errorMessage: null,
-        });
+        }));
         return true;
       } catch (error) {
         setState((previous) => ({

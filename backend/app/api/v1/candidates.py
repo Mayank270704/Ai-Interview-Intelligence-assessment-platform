@@ -15,8 +15,8 @@ router = APIRouter(prefix="/candidates", tags=["candidates"])
 @router.post("", response_model=CandidateRead)
 def create_candidate(
     request: CandidateCreate,
-    session: Session = Depends(get_session),
     current_user: AuthenticatedUser = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ) -> CandidateRead:
     candidate = candidate_repository.create_candidate(
         session,
