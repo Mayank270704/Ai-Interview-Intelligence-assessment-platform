@@ -112,3 +112,84 @@ def test_delete_swallows_network_errors(monkeypatch):
     )
 
     assert storage.delete_resume_pdf("cand-1/res-1.pdf") is False
+
+
+def _configured(monkeypatch) -> None:
+    monkeypatch.setattr(storage, "SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.setattr(storage, "SUPABASE_SERVICE_ROLE_KEY", "service-role-key")
+    monkeypatch.setattr(storage, "SUPABASE_RESUME_BUCKET", "resumes")
+
+
+def _response(status_code: int, body):
+    response = MagicMock(status_code=status_code)
+    if isinstance(body, Exception):
+        response.json.side_effect = body
+    else:
+        response.json.return_value = body
+    return response
+
+
+# The shape Supabase actually returns for a write to a bucket that is not there:
+# HTTP 400 carrying a NoSuchBucket body, never an HTTP 404.
+MISSING_BUCKET_BODY = {
+    "statusCode": "404",
+    "error": "Bucket not found",
+    "message": "Bucket not found",
+    "code": "NoSuchBucket",
+}
+
+
+def test_missing_bucket_is_reported_as_a_configuration_error(monkeypatch):
+    """No retry can create the bucket, so this must not look like an outage."""
+    _configured(monkeypatch)
+    monkeypatch.setattr(httpx, "post", MagicMock(return_value=_response(400, MISSING_BUCKET_BODY)))
+
+    with pytest.raises(storage.StorageNotConfiguredError) as exc_info:
+        storage.upload_resume_pdf("candidate-1/resume-1.pdf", b"%PDF-1.4\n...")
+
+    # The bucket setting is configuration, not a secret; naming it is the point.
+    assert "resumes" in str(exc_info.value)
+    assert "SUPABASE_RESUME_BUCKET" in str(exc_info.value)
+
+
+def test_missing_bucket_detected_from_the_status_code_field_alone(monkeypatch):
+    _configured(monkeypatch)
+    body = {"statusCode": "404", "error": "Not found", "message": "Not found"}
+    monkeypatch.setattr(httpx, "post", MagicMock(return_value=_response(400, body)))
+
+    with pytest.raises(storage.StorageNotConfiguredError):
+        storage.upload_resume_pdf("candidate-1/resume-1.pdf", b"%PDF-1.4\n...")
+
+
+def test_other_rejections_stay_upstream_failures(monkeypatch):
+    """A configured bucket that refuses the write is not a configuration error."""
+    _configured(monkeypatch)
+    body = {"statusCode": "409", "error": "Duplicate", "message": "The resource already exists"}
+    monkeypatch.setattr(httpx, "post", MagicMock(return_value=_response(409, body)))
+
+    with pytest.raises(storage.StorageUploadError) as exc_info:
+        storage.upload_resume_pdf("candidate-1/resume-1.pdf", b"%PDF-1.4\n...")
+
+    assert not isinstance(exc_info.value, storage.StorageNotConfiguredError)
+
+
+def test_a_non_json_rejection_stays_an_upstream_failure(monkeypatch):
+    _configured(monkeypatch)
+    monkeypatch.setattr(
+        httpx, "post", MagicMock(return_value=_response(500, ValueError("not json")))
+    )
+
+    with pytest.raises(storage.StorageUploadError) as exc_info:
+        storage.upload_resume_pdf("candidate-1/resume-1.pdf", b"%PDF-1.4\n...")
+
+    assert not isinstance(exc_info.value, storage.StorageNotConfiguredError)
+
+
+def test_missing_bucket_error_names_no_credential(monkeypatch):
+    _configured(monkeypatch)
+    monkeypatch.setattr(httpx, "post", MagicMock(return_value=_response(400, MISSING_BUCKET_BODY)))
+
+    with pytest.raises(storage.StorageNotConfiguredError) as exc_info:
+        storage.upload_resume_pdf("candidate-1/resume-1.pdf", b"%PDF-1.4\n...")
+
+    assert "service-role-key" not in str(exc_info.value)

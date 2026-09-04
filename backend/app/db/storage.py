@@ -43,10 +43,28 @@ def resume_storage_path(candidate_id: str, resume_id: str) -> str:
     return f"{candidate_id}/{resume_id}.pdf"
 
 
+def _bucket_is_missing(response: httpx.Response) -> bool:
+    """Whether Storage rejected the write because the bucket itself is not there.
+
+    Supabase reports this as HTTP 400 carrying a NoSuchBucket body, not as a 404,
+    so the status alone cannot distinguish "this deployment was never set up"
+    from "the upload failed". Only the documented error code is trusted -- the
+    message text is not parsed.
+    """
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    if not isinstance(body, dict):
+        return False
+    return body.get("code") == "NoSuchBucket" or str(body.get("statusCode")) == "404"
+
+
 def upload_resume_pdf(path: str, pdf_bytes: bytes) -> None:
     """Upload a resume PDF to the private Supabase Storage bucket.
 
-    Raises StorageUploadError if Storage is not configured or the upload fails,
+    Raises StorageNotConfiguredError when this deployment has no usable bucket to
+    write to, and StorageUploadError when a configured bucket rejects the write,
     so the caller can avoid persisting a resume record for a file that was never
     actually stored.
     """
@@ -70,6 +88,14 @@ def upload_resume_pdf(path: str, pdf_bytes: bytes) -> None:
         raise StorageUploadError(f"Failed to reach Supabase Storage: {exc}") from exc
 
     if response.status_code >= 400:
+        if _bucket_is_missing(response):
+            # Retrying cannot help: the bucket has to be created, or
+            # SUPABASE_RESUME_BUCKET has to name one that exists.
+            raise StorageNotConfiguredError(
+                f"Supabase Storage bucket '{SUPABASE_RESUME_BUCKET}' does not exist "
+                "(set SUPABASE_RESUME_BUCKET to an existing private bucket, or "
+                "create that bucket)."
+            )
         raise StorageUploadError(
             f"Supabase Storage upload failed with status {response.status_code}"
         )

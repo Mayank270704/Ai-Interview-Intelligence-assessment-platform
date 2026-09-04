@@ -22,6 +22,11 @@ T = TypeVar("T", bound=BaseModel)
 TRANSIENT_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
 MAX_ATTEMPTS = 3
 RETRY_BACKOFF_SECONDS = 2.0
+# Ceiling on a single server-suggested wait. Gemini's own advice is honoured up
+# to this, so one implausible value cannot park a request for minutes; the whole
+# retry sequence is separately bounded by GEMINI_TIMEOUT_SECONDS.
+MAX_RETRY_DELAY_SECONDS = 30.0
+_RETRY_INFO_TYPE_SUFFIX = "google.rpc.RetryInfo"
 
 
 class LLMUnavailableError(RuntimeError):
@@ -67,27 +72,92 @@ def base_config_fields(*, thinking: bool = True) -> dict:
     return fields
 
 
+def _parse_duration(value) -> float | None:
+    """Read a protobuf duration string such as '20.138s' as seconds."""
+    if isinstance(value, (int, float)):
+        seconds = float(value)
+    elif isinstance(value, str):
+        try:
+            seconds = float(value[:-1] if value.endswith("s") else value)
+        except ValueError:
+            return None
+    else:
+        return None
+    return seconds if seconds >= 0 else None
+
+
+def server_retry_delay(exc: genai_errors.APIError) -> float | None:
+    """How long Gemini itself asked the caller to wait, if it said.
+
+    A rate-limited response usually carries a google.rpc.RetryInfo detail (and
+    sometimes a Retry-After header) naming the point at which the request would
+    actually succeed. Retrying earlier than that just burns an attempt against a
+    limit that has not reset, which is what makes a short fixed backoff useless
+    against a per-minute quota.
+    """
+    payload = exc.details if isinstance(exc.details, dict) else {}
+    error = payload.get("error")
+    details = error.get("details") if isinstance(error, dict) else None
+    for detail in details or []:
+        if not isinstance(detail, dict):
+            continue
+        if str(detail.get("@type", "")).endswith(_RETRY_INFO_TYPE_SUFFIX):
+            delay = _parse_duration(detail.get("retryDelay"))
+            if delay is not None:
+                return delay
+
+    headers = getattr(getattr(exc, "response", None), "headers", None)
+    if headers is not None:
+        try:
+            return _parse_duration(headers.get("Retry-After"))
+        except Exception:  # noqa: BLE001 - a hostile header must not break retrying
+            return None
+    return None
+
+
 def call_with_retry(operation, description: str):
-    """Run one Gemini call, retrying only statuses that mean 'not processed yet'."""
-    last_error: Exception | None = None
+    """Run one Gemini call, retrying only statuses that mean 'not processed yet'.
+
+    The whole sequence is bounded twice over: at most MAX_ATTEMPTS calls, and no
+    sleep that would push the sequence past GEMINI_TIMEOUT_SECONDS. When the
+    remaining budget cannot cover the wait, the error is raised immediately
+    rather than slept on and raised anyway.
+    """
+    deadline = time.monotonic() + GEMINI_TIMEOUT_SECONDS
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             return operation()
         except genai_errors.APIError as exc:
             if exc.code not in TRANSIENT_STATUS_CODES or attempt == MAX_ATTEMPTS:
                 raise
-            last_error = exc
-            delay = RETRY_BACKOFF_SECONDS * attempt
+
+            suggested = server_retry_delay(exc)
+            delay = min(
+                suggested if suggested is not None else RETRY_BACKOFF_SECONDS * attempt,
+                MAX_RETRY_DELAY_SECONDS,
+            )
+            remaining = deadline - time.monotonic()
+            if delay >= remaining:
+                logger.warning(
+                    "%s failed with retryable status %s; no retry budget left "
+                    "(needs %.1fs, %.1fs remaining)",
+                    description,
+                    exc.code,
+                    delay,
+                    max(remaining, 0.0),
+                )
+                raise
+
             logger.warning(
-                "%s failed with retryable status %s (attempt %s/%s); retrying in %ss",
+                "%s failed with retryable status %s (attempt %s/%s); retrying in %.1fs%s",
                 description,
                 exc.code,
                 attempt,
                 MAX_ATTEMPTS,
                 delay,
+                " as the server requested" if suggested is not None else "",
             )
             time.sleep(delay)
-    raise last_error  # pragma: no cover - loop always returns or raises above
 
 
 class GeminiProvider(LLMProvider):

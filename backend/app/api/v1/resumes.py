@@ -114,7 +114,17 @@ def upload_resume(
     storage_path = resume_storage.resume_storage_path(candidate_id, resume_id)
     try:
         resume_storage.upload_resume_pdf(storage_path, pdf_bytes)
+    except resume_storage.StorageNotConfiguredError as exc:
+        # A deployment problem, not an upstream one: the bucket named by
+        # SUPABASE_RESUME_BUCKET does not exist, so no retry can succeed. The
+        # setting and bucket name are configuration, not secrets, so naming them
+        # in the log is what makes this diagnosable.
+        logger.error("Resume upload cannot proceed: %s", exc)
+        raise HTTPException(
+            status_code=503, detail="Resume storage is not configured on this server"
+        ) from exc
     except resume_storage.StorageUploadError as exc:
+        logger.warning("Resume storage upload failed: %s", exc)
         raise HTTPException(
             status_code=502, detail="Failed to store the uploaded resume file"
         ) from exc

@@ -404,3 +404,51 @@ def test_analysis_failure_does_not_leak_the_provider_message(
 
     assert response.status_code == 502
     assert "quota" not in response.json()["detail"]
+
+
+def test_missing_bucket_answers_503_and_persists_nothing(
+    client: TestClient, api_session: Session, monkeypatch, mocked_processor
+):
+    """A bucket that does not exist is a deployment problem, not an upstream one.
+
+    Reported by Supabase as HTTP 400 with a NoSuchBucket body, which previously
+    surfaced to the caller as an opaque 502 suggesting a transient outage.
+    """
+    monkeypatch.setattr(
+        resume_storage,
+        "upload_resume_pdf",
+        MagicMock(
+            side_effect=resume_storage.StorageNotConfiguredError(
+                "Supabase Storage bucket 'resumes' does not exist "
+                "(set SUPABASE_RESUME_BUCKET to an existing private bucket, or "
+                "create that bucket)."
+            )
+        ),
+    )
+
+    response = _upload(client)
+
+    assert response.status_code == 503
+    assert api_session.query(Resume).count() == 0
+    assert api_session.query(Candidate).count() == 0
+
+
+def test_missing_bucket_response_leaks_no_configuration_detail(
+    client: TestClient, monkeypatch, mocked_processor
+):
+    monkeypatch.setattr(
+        resume_storage,
+        "upload_resume_pdf",
+        MagicMock(
+            side_effect=resume_storage.StorageNotConfiguredError(
+                "Supabase Storage bucket 'super-secret-bucket' does not exist."
+            )
+        ),
+    )
+
+    response = _upload(client)
+
+    assert response.status_code == 503
+    # The operator gets the bucket name in the log; the caller does not.
+    assert "super-secret-bucket" not in response.text
+    assert "SUPABASE" not in response.text
