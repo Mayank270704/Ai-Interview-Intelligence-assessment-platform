@@ -1,6 +1,5 @@
 """Tests for the evaluation engine."""
 
-from app.ai.answer_intelligence.answer_analyzer import AnswerAnalyzer
 from app.ai.evaluation_engine.evaluator import AnswerEvaluator
 from app.schemas.answer import AnswerAnalysis
 from app.schemas.evaluation import AnswerEvaluation

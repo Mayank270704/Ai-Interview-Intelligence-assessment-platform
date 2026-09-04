@@ -28,6 +28,7 @@ from app.schemas.question import GeneratedQuestion
 from app.schemas.resume import CandidateIdentity, CandidateProfile, Claim, Skill
 
 TEST_USER = AuthenticatedUser(id="test-user-1", email="tester@example.com", access_token="test-token")
+BLANK_ANSWER = "  \t \n  "
 
 
 @pytest.fixture
@@ -376,6 +377,74 @@ def test_candidate_resume_relationship_is_validated(client: TestClient, mocked_a
     )
 
     assert response.status_code == 400
+
+
+def test_blank_objective_is_rejected_before_the_pipeline(
+    client: TestClient,
+    mocked_ai,
+):
+    """A whitespace-only objective is not an objective, and must not reach the pipeline."""
+    candidate_id = _create_candidate(client)
+    resume_id = _create_resume(client, candidate_id)
+
+    response = client.post(
+        "/api/v1/interviews",
+        json={"resume_id": resume_id, "objective": "   ", "difficulty": "medium"},
+    )
+
+    assert response.status_code == 422
+    mocked_ai["generate_question"].assert_not_called()
+
+
+def test_objective_is_stored_stripped(client: TestClient, mocked_ai):
+    candidate_id = _create_candidate(client)
+    resume_id = _create_resume(client, candidate_id)
+
+    started = client.post(
+        "/api/v1/interviews",
+        json={"resume_id": resume_id, "objective": "  Machine Learning  "},
+    ).json()
+
+    state = client.get(f"/api/v1/interviews/{started['interview_id']}").json()
+    assert state["objective"] == "Machine Learning"
+
+
+def test_blank_answer_is_rejected(client: TestClient, mocked_ai):
+    """The voice and video paths reject an empty transcript; text must agree."""
+    candidate_id = _create_candidate(client)
+    resume_id = _create_resume(client, candidate_id)
+    started = _start_interview(client, resume_id)
+    mocked_ai["analyze_answer"].reset_mock()
+
+    response = client.post(
+        f"/api/v1/interviews/{started['interview_id']}/answers",
+        json={"turn_id": started["turn_id"], "answer": BLANK_ANSWER},
+    )
+
+    assert response.status_code == 422
+    mocked_ai["analyze_answer"].assert_not_called()
+
+
+def test_pipeline_failure_does_not_leak_the_provider_message(
+    client: TestClient,
+    mocked_ai,
+):
+    """An upstream model error can name quota or model internals; the caller gets the status."""
+    candidate_id = _create_candidate(client)
+    resume_id = _create_resume(client, candidate_id)
+    started = _start_interview(client, resume_id)
+    mocked_ai["generate_question"].side_effect = ValueError(
+        "Failed to generate question: 429 RESOURCE_EXHAUSTED quota project-1234"
+    )
+
+    response = client.post(
+        f"/api/v1/interviews/{started['interview_id']}/answers",
+        json={"turn_id": started["turn_id"], "answer": "Answer."},
+    )
+
+    assert response.status_code == 502
+    assert "RESOURCE_EXHAUSTED" not in response.text
+    assert "project-1234" not in response.text
 
 
 def test_failed_answer_submission_does_not_corrupt_turn_state(

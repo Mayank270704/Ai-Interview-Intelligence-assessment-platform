@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { useInterview } from "@/hooks/useInterview";
+import { ApiError } from "@/services/api/client";
+import { completeInterview } from "@/services/interview";
 
 export default function InterviewTextSession() {
   const router = useRouter();
@@ -14,6 +16,7 @@ export default function InterviewTextSession() {
   const { status, question, turnNumber, difficulty, completed, submitAnswer, errorMessage, retry } =
     useInterview(interviewId);
   const [answer, setAnswer] = useState("");
+  const [ending, setEnding] = useState(false);
 
   if (!interviewId) {
     return (
@@ -56,7 +59,21 @@ export default function InterviewTextSession() {
     }
   };
 
-  const handleEndInterview = () => {
+  // Ending the interview closes it server-side, exactly as the voice and video
+  // sessions do, so a text interview is not left in progress indefinitely.
+  const handleEndInterview = async () => {
+    if (ending) {
+      return;
+    }
+    setEnding(true);
+    try {
+      await completeInterview(interviewId);
+    } catch (error) {
+      // An already-completed interview still has results worth showing.
+      if (!(error instanceof ApiError)) {
+        throw error;
+      }
+    }
     router.push(`/results?interviewId=${interviewId}`);
   };
 
@@ -119,8 +136,13 @@ export default function InterviewTextSession() {
             {submitting && <span className="spinner" aria-hidden="true" />}
             {submitting ? "Submitting…" : "Submit Answer"}
           </button>
-          <button type="button" className="button secondary" onClick={handleEndInterview} disabled={submitting}>
-            {completed ? "View results" : "End Interview"}
+          <button
+            type="button"
+            className="button secondary"
+            onClick={handleEndInterview}
+            disabled={submitting || ending}
+          >
+            {ending ? "Finishing…" : completed ? "View results" : "End Interview"}
           </button>
         </div>
       </form>

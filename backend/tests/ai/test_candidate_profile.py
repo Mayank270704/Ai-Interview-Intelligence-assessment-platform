@@ -1,7 +1,5 @@
 """Tests for candidate profile schemas."""
 
-import pytest
-
 from app.schemas.resume import (
     CandidateProfile,
     CandidateIdentity,
@@ -10,8 +8,6 @@ from app.schemas.resume import (
     Technology,
     Experience,
     Project,
-    Certification,
-    Achievement,
     Claim,
 )
 

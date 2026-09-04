@@ -85,18 +85,6 @@ class InterviewConversationState:
         """Check if a concept has been sufficiently explored."""
         return concept.lower() in self.explored_concepts
 
-    def is_concept_repeated(self, concept: str) -> bool:
-        """Check if we have recently asked about this concept."""
-        normalized = concept.lower()
-        recent = self.get_recent_turns(5)
-        for turn in recent:
-            if (
-                turn.get("target_concept")
-                and normalized in turn["target_concept"].lower()
-            ):
-                return True
-        return False
-
     def get_state_summary(self) -> dict[str, Any]:
         """Get a summary of the current interview state."""
         return {

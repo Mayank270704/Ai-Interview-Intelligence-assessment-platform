@@ -1,1 +1,0 @@
-"""Interview stopping policy boundary."""

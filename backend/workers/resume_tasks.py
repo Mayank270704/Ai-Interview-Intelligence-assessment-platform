@@ -1,1 +1,0 @@
-"""Background resume processing tasks."""

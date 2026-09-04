@@ -1,7 +1,5 @@
 """Tests for resume extractors."""
 
-import pytest
-
 from app.ai.resume_intelligence.section_extractor import extract_resume_sections
 from app.ai.resume_intelligence.skill_extractor import extract_skills_from_text
 from app.ai.resume_intelligence.experience_extractor import extract_experience_entries

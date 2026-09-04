@@ -27,6 +27,16 @@ signup_limiter = RateLimiter(max_requests=5, window_seconds=900)
 
 
 def _map_auth_error(exc: SupabaseAuthError) -> HTTPException:
+    # 429 is Supabase's own limit (notably its confirmation-email quota), which
+    # is a separate ceiling from this API's per-client limiter. Relaying it as
+    # 502 would tell the caller the service is broken when in fact they only
+    # need to wait, and would hide a retryable condition behind a generic error.
+    if exc.status_code == 429:
+        return HTTPException(
+            status_code=429,
+            detail="Too many attempts. Please wait and try again.",
+            headers={"Retry-After": "60"},
+        )
     if exc.status_code in (400, 401, 403, 422, 503):
         return HTTPException(status_code=exc.status_code, detail=str(exc))
     logger.warning("Supabase Auth request failed with status %s: %s", exc.status_code, exc)

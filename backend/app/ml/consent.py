@@ -8,15 +8,10 @@ consent immediately makes their turns ineligible for the next export.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Candidate, Interview, InterviewTurn
-
-if TYPE_CHECKING:
-    pass
 
 
 def candidate_is_eligible(candidate: Candidate | None) -> bool:

@@ -1,5 +1,7 @@
 """Resume API routes."""
 
+import logging
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
@@ -18,6 +20,8 @@ from app.schemas.interview import (
     ResumeCreateResponse,
     ResumeUploadResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
@@ -72,12 +76,30 @@ def upload_resume(
     if not pdf_bytes.startswith(PDF_MAGIC_BYTES):
         raise HTTPException(status_code=415, detail="Uploaded file must be a PDF")
 
+    # Checked before the analysis, not after: the upload cannot succeed without
+    # somewhere to put the file, and analysis is the expensive step of this
+    # request. Failing here also keeps a missing-configuration error from being
+    # reported as an upstream storage outage further down.
+    if not resume_storage.is_configured():
+        logger.error(
+            "Resume upload rejected: Supabase Storage is not configured "
+            "(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)."
+        )
+        raise HTTPException(
+            status_code=503, detail="Resume storage is not configured on this server"
+        )
+
     try:
         profile = ResumeProcessor().process_resume(pdf_bytes)
     except PDFExtractionError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        # The provider's own message can carry upstream detail the caller has no
+        # use for, so it goes to the server log and the caller gets the status.
+        logger.warning("Resume analysis failed: %s", exc)
+        raise HTTPException(
+            status_code=502, detail="Could not analyze the resume right now"
+        ) from exc
 
     if candidate_id is None:
         candidate = candidate_repository.create_candidate(

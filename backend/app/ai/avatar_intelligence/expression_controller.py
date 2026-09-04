@@ -1,1 +1,0 @@
-"""Avatar expression boundary."""

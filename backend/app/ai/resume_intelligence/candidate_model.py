@@ -1,1 +1,0 @@
-"""Candidate intelligence model boundary."""

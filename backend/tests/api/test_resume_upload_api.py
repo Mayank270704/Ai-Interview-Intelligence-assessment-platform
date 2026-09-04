@@ -203,6 +203,7 @@ def test_analysis_failure_returns_502(client: TestClient, monkeypatch):
 
 
 def test_persistence_failure_returns_503(client: TestClient, monkeypatch, mocked_processor):
+    monkeypatch.setattr(resume_storage, "delete_resume_pdf", MagicMock(return_value=True))
     monkeypatch.setattr(
         resume_repository,
         "create_resume",
@@ -371,3 +372,35 @@ def test_successful_upload_never_deletes_the_stored_object(
 
     assert response.status_code == 200
     delete.assert_not_called()
+
+
+def test_upload_reports_503_when_storage_is_not_configured(
+    client: TestClient, api_session: Session, monkeypatch
+):
+    """A server with no Storage credentials cannot complete the upload at all."""
+    process_resume = MagicMock(return_value=_profile())
+    monkeypatch.setattr(ResumeProcessor, "process_resume", process_resume)
+    monkeypatch.setattr(resume_storage, "is_configured", lambda: False)
+
+    response = _upload(client)
+
+    assert response.status_code == 503
+    # The refusal comes before the expensive analysis, and stores nothing.
+    process_resume.assert_not_called()
+    assert api_session.query(Candidate).count() == 0
+    assert api_session.query(Resume).count() == 0
+
+
+def test_analysis_failure_does_not_leak_the_provider_message(
+    client: TestClient, monkeypatch
+):
+    monkeypatch.setattr(
+        ResumeProcessor,
+        "process_resume",
+        MagicMock(side_effect=ValueError("Failed to analyze resume: quota exceeded")),
+    )
+
+    response = _upload(client)
+
+    assert response.status_code == 502
+    assert "quota" not in response.json()["detail"]

@@ -1,9 +1,9 @@
 """Interview API schemas."""
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.schemas.answer import AnswerAnalysis
 from app.schemas.evaluation import AnswerEvaluation
@@ -13,6 +13,11 @@ from app.schemas.question import GeneratedQuestion, QuestionDifficulty
 from app.schemas.resume import CandidateProfile
 
 InterviewStatus = Literal["created", "in_progress", "completed"]
+
+# Whitespace is not content. Stripping before the length check keeps a blank
+# objective or answer out of the pipeline entirely, rather than letting it reach
+# a service that would either raise or spend a model call analysing nothing.
+NonBlankText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 class ResumeCreateRequest(BaseModel):
@@ -41,7 +46,7 @@ class ResumeUploadResponse(BaseModel):
 class InterviewStartRequest(BaseModel):
     """Request body for starting a persisted interview."""
 
-    objective: str = Field(..., min_length=1)
+    objective: NonBlankText
     difficulty: QuestionDifficulty = "medium"
     candidate_id: str | None = None
     resume_id: str | None = None
@@ -64,7 +69,7 @@ class InterviewAnswerRequest(BaseModel):
     """Request body for submitting an interview answer."""
 
     turn_id: str
-    answer: str = Field(..., min_length=1)
+    answer: NonBlankText
 
 
 class AnsweredTurnResponse(BaseModel):

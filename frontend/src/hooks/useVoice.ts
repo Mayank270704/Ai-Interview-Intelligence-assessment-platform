@@ -1,1 +1,0 @@
-export function useVoice() { return { status: "idle" as const }; }

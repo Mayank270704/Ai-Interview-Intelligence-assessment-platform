@@ -1,12 +1,11 @@
 """Tests for resume processor."""
 
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.ai.resume_intelligence.processor import ResumeProcessor
-from app.schemas.resume import CandidateProfile, CandidateIdentity
+from app.schemas.resume import CandidateProfile
 
 
 @pytest.fixture

@@ -9,7 +9,15 @@ APP_NAME = os.getenv("APP_NAME", "AI Interview Intelligence API")
 # LLM Configuration
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+# Reasoning effort for the structured-output calls. Gemini 3 models reason before
+# answering, which on a pure extraction task costs minutes of latency for no gain
+# in the extracted fields. Set to an empty value to send no thinking configuration
+# at all, which is required for models that do not accept one.
+GEMINI_THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "low").strip().lower()
+# Hard ceiling on one Gemini HTTP call, so a stalled upstream surfaces as a
+# timeout the API can translate rather than holding a request open indefinitely.
+GEMINI_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "120"))
 
 # Database Configuration
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -37,6 +45,7 @@ CORS_ALLOW_ORIGINS = [
     if origin.strip()
 ]
 
+
 def validate_llm_config() -> None:
     """Validate LLM settings at the LLM boundary."""
     if LLM_PROVIDER == "gemini" and not GEMINI_API_KEY:
@@ -44,3 +53,20 @@ def validate_llm_config() -> None:
             "LLM_PROVIDER is set to 'gemini' but GEMINI_API_KEY is not configured. "
             "Please set the GEMINI_API_KEY environment variable."
         )
+
+
+def missing_required_settings() -> list[str]:
+    """Names of the settings the product flow needs but this environment lacks.
+
+    Names only, never values. Each of these is required by a user-facing step:
+    without it that step fails at request time with an error the caller cannot
+    act on, so startup reports them up front instead.
+    """
+    required = {
+        "DATABASE_URL": DATABASE_URL,
+        "SUPABASE_URL": SUPABASE_URL,
+        "SUPABASE_ANON_KEY": SUPABASE_ANON_KEY,
+        "SUPABASE_SERVICE_ROLE_KEY": SUPABASE_SERVICE_ROLE_KEY,
+        "GEMINI_API_KEY": GEMINI_API_KEY,
+    }
+    return sorted(name for name, value in required.items() if not value)

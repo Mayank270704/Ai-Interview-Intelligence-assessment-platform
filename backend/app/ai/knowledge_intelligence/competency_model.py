@@ -1,1 +1,0 @@
-"""Competency model boundary."""

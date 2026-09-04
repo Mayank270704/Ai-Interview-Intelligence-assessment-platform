@@ -72,9 +72,16 @@ function friendlyMessage(status: number, detail: string | undefined): string {
     case 409:
     case 413:
     case 415:
+    case 429:
       return detail ?? "The request could not be completed.";
     case 422:
       return "We couldn't process that file or request. Please check it and try again.";
+    case 502:
+      return "The AI service didn't respond in time. Please try again in a moment.";
+    case 503:
+      // A 503 is a server that is not configured or a database that is down --
+      // retrying immediately will fail the same way, so don't invite it.
+      return detail ?? "This feature is temporarily unavailable. Please try again later.";
     default:
       return "Something went wrong on our end. Please try again in a moment.";
   }

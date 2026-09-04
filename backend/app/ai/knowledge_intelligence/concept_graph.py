@@ -1,1 +1,0 @@
-"""Concept graph boundary."""

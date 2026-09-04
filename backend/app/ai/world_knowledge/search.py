@@ -1,1 +1,0 @@
-"""World knowledge search boundary."""

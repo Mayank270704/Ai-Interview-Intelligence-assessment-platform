@@ -72,6 +72,32 @@ def test_signup_with_existing_email_returns_the_upstream_status(client: TestClie
     assert response.status_code == 400
 
 
+def test_signup_relays_supabase_rate_limiting_as_429(client: TestClient, monkeypatch):
+    """Supabase's own limit (its confirmation-email quota) is retryable, not an outage."""
+    monkeypatch.setattr(
+        supabase_auth,
+        "sign_up",
+        MagicMock(side_effect=supabase_auth.SupabaseAuthError(429, "email rate limit exceeded")),
+    )
+
+    response = client.post("/api/v1/auth/signup", json={"email": "jane@example.com", "password": "password123"})
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"]
+
+
+def test_login_relays_supabase_rate_limiting_as_429(client: TestClient, monkeypatch):
+    monkeypatch.setattr(
+        supabase_auth,
+        "sign_in",
+        MagicMock(side_effect=supabase_auth.SupabaseAuthError(429, "over_request_rate_limit")),
+    )
+
+    response = client.post("/api/v1/auth/login", json={"email": "jane@example.com", "password": "password123"})
+
+    assert response.status_code == 429
+
+
 def test_signup_when_auth_not_configured_returns_503(client: TestClient, monkeypatch):
     monkeypatch.setattr(
         supabase_auth, "sign_up", MagicMock(side_effect=supabase_auth.SupabaseAuthError(503, "Supabase Auth is not configured."))

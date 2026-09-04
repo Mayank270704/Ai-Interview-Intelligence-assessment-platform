@@ -127,7 +127,10 @@ def _execute_answer_turn(
     try:
         question = service.submit_answer(answer)
     except InterviewPipelineError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        logger.warning("Interview turn failed for interview %s: %s", interview.id, exc)
+        raise HTTPException(
+            status_code=502, detail="Could not process this answer right now"
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -206,7 +209,13 @@ def start_interview(
     try:
         question = service.start_interview()
     except InterviewPipelineError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        # The pipeline error carries the provider's own message, which can name
+        # upstream quota or model detail the caller cannot act on. It belongs in
+        # the server log, not in the response body.
+        logger.warning("Could not open interview %s: %s", interview.id, exc)
+        raise HTTPException(
+            status_code=502, detail="Could not generate the first question right now"
+        ) from exc
 
     turn_id = service.current_turn_id
     if turn_id is None:

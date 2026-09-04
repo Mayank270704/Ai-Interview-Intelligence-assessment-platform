@@ -310,7 +310,8 @@ Knowledge estimates should accumulate evidence over the interview and across fut
 
 Location:
 
-backend/app/ai/adaptive_engine/
+backend/app/ai/interviewer_brain/ (the decision itself)
+backend/app/services/interview/turn_service.py (applying the difficulty direction)
 
 The Adaptive Engine determines the next interview action.
 
@@ -491,7 +492,8 @@ Optimize retrieval for relevance, latency, reliability, and cost.
 
 Location:
 
-backend/app/ai/voice_intelligence/
+backend/app/ai/voice/ (speech-to-text and text-to-speech providers)
+backend/app/api/v1/interviews.py (question audio and voice answer routes)
 
 Voice and text must use the same interview engine.
 
@@ -532,7 +534,9 @@ Treat them as communication indicators.
 
 Location:
 
-backend/app/ai/avatar_intelligence/
+frontend/src/components/avatar/, frontend/src/hooks/useAvatar.ts,
+frontend/src/services/avatar/ (the avatar is rendered and driven client-side)
+backend/app/api/v1/interviews.py (video answer route)
 
 The video interviewer consists of:
 

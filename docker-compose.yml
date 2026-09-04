@@ -3,12 +3,21 @@ services:
     build:
       context: .
       dockerfile: infra/docker/backend.Dockerfile
+    # The API reads DATABASE_URL, the SUPABASE_* keys, and GEMINI_API_KEY from the
+    # environment. Without this the container starts but every request fails, so
+    # the same file used for local development is passed straight through.
+    env_file:
+      - backend/.env
     ports:
       - "8000:8000"
   frontend:
     build:
       context: .
       dockerfile: infra/docker/frontend.Dockerfile
+      args:
+        # Baked into the bundle at build time, so it must be supplied to the
+        # build rather than to the running container.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
     ports:
       - "3000:3000"
     depends_on:

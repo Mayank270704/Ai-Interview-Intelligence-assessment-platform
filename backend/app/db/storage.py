@@ -21,6 +21,19 @@ class StorageUploadError(Exception):
     """Raised when a resume PDF cannot be stored in Supabase Storage."""
 
 
+class StorageNotConfiguredError(StorageUploadError):
+    """Raised when this deployment has no Supabase Storage credentials at all.
+
+    Separate from a failed upload: nothing is wrong upstream, the server is
+    simply missing configuration, and the caller cannot fix that by retrying.
+    """
+
+
+def is_configured() -> bool:
+    """Whether resume PDFs can be stored at all in this environment."""
+    return bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)
+
+
 def resume_storage_path(candidate_id: str, resume_id: str) -> str:
     """Build the deterministic, collision-free object path for one resume's PDF.
 
@@ -37,8 +50,11 @@ def upload_resume_pdf(path: str, pdf_bytes: bytes) -> None:
     so the caller can avoid persisting a resume record for a file that was never
     actually stored.
     """
-    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
-        raise StorageUploadError("Supabase Storage is not configured.")
+    if not is_configured():
+        raise StorageNotConfiguredError(
+            "Supabase Storage is not configured: set SUPABASE_URL and "
+            "SUPABASE_SERVICE_ROLE_KEY."
+        )
 
     url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_RESUME_BUCKET}/{path}"
     headers = {
@@ -70,7 +86,7 @@ def delete_resume_pdf(path: str) -> bool:
     and a failure to clean up must not replace the error that caused it -- the
     worst case is the orphan that would have been left anyway.
     """
-    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+    if not is_configured():
         return False
 
     url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_RESUME_BUCKET}/{path}"
